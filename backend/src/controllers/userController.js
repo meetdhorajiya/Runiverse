@@ -14,7 +14,7 @@ export const getProfile = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const allowedFields = ["username", "displayName", "avatar", "location", "bio"];
+  const allowedFields = ["username", "displayName", "avatar", "avatarUrl", "location", "bio"];
     const updates = {};
 
     for (let key of allowedFields) {
@@ -27,6 +27,12 @@ export const updateProfile = async (req, res) => {
       updates.location.type = "Point";
     } else {
       delete updates.location;
+    }
+
+    // Map avatarUrl -> avatar if provided
+    if (updates.avatarUrl && !updates.avatar) {
+      updates.avatar = updates.avatarUrl;
+      delete updates.avatarUrl;
     }
 
     const user = await User.findByIdAndUpdate(

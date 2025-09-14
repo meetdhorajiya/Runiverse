@@ -22,6 +22,7 @@ interface UserSlice {
   group: Group | null;
   setUser: (user: User) => void;
   joinGroup: (groupId: string) => void;
+  updateUser: (partial: Partial<User>) => void;
 }
 
 interface StatsSlice {
@@ -77,6 +78,10 @@ export const useStore = create<
           group,
         }));
       },
+      updateUser: (partial) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, ...partial } : state.user,
+        })),
 
       // Stats Slice
       stats: {

@@ -20,8 +20,14 @@
       "package": "com.imagine_x.Runiverse",
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
-      ]
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE"
+      ],
+      "foregroundService": {
+      "notificationTitle": "Walking Route Active",
+      "notificationBody": "Tracking your path for the fitness app."
+    }
     },
     "web": {
       "bundler": "metro",

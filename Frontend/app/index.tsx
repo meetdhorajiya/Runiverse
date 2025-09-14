@@ -1,63 +1,84 @@
-import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
-import { FontAwesome, Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../context/ThemeContext'; // 1. Import the theme hook
+import { FontAwesome } from '@expo/vector-icons';
+import { useTheme } from '../context/ThemeContext';
+import { Video, ResizeMode } from 'expo-av';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useRef } from 'react';
+
+// Provide a fallback demo video URL if env not set. Replace with your own.
+const VIDEO_URL = process.env.EXPO_PUBLIC_WELCOME_VIDEO_URL || 'https://static-assets.mapbox.com/www/videos/mobile-maps-sdk/section_hero/video@720p.webm';
 
 export default function WelcomeScreen() {
-  // 2. Get the current theme from the context
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
+  const videoRef = useRef<Video | null>(null);
 
   return (
-    // 3. Apply dynamic background color
-    <SafeAreaView className={isDarkMode ? "flex-1 bg-background-dark" : "flex-1 bg-white"}>
-      <View className="flex-1 p-6 justify-between">
-        {/* Background Image */}
-        <Image
-          source={{ uri: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b' }}
-          className="absolute top-0 left-0 right-0 h-3/5"
-          resizeMode="cover"
+    <SafeAreaView className={isDarkMode ? 'flex-1 bg-background-dark' : 'flex-1 bg-black'}>
+      <View className="flex-1">
+        {/* Background Video */}
+        <Video
+          ref={videoRef}
+          source={{ uri: VIDEO_URL }}
+          style={StyleSheet.absoluteFill}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay
+          isLooping
+          isMuted
+          onError={(e) => console.warn('Video error', e)}
         />
-        <View className="absolute top-0 left-0 right-0 h-3/5 bg-black/40" />
-        
-        {/* ADDED: Settings Button */}
-        <View className="absolute top-16 right-6">
-            <Link href="/settings" asChild>
-                <TouchableOpacity className="bg-black/30 p-3 rounded-full">
-                    <Ionicons name="settings-sharp" size={24} color="white" />
-                </TouchableOpacity>
-            </Link>
-        </View>
 
-        {/* Spacer to push content down */}
-        <View className="h-3/5" />
+        {/* Darken + vignette overlays */}
+        <LinearGradient
+          colors={[ 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.40)', 'rgba(0,0,0,1)' ]}
+          locations={[0,0.55,1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View pointerEvents='none' style={styles.vignette} />
 
         {/* Content */}
-        <View>
-          {/* 4. Apply dynamic text colors */}
-          <Text className={isDarkMode ? "text-text-primary text-4xl font-bold" : "text-black text-4xl font-bold"}>
-            Welcome to Runiverse
-          </Text>
-          <Text className={isDarkMode ? "text-text-secondary text-base mt-4" : "text-gray-600 text-base mt-4"}>
-            Step into the Runiverse, where every stride connects you to a global community. Track your runs, conquer virtual worlds, and challenge friends.
-          </Text>
-        </View>
-
-        {/* Navigation */}
-        <View className="flex-row justify-between items-center">
-          <View className="flex-row space-x-2">
-            <View className="h-2 w-5 bg-primary-green rounded-full" />
-            <View className="h-2 w-2 bg-text-secondary rounded-full" />
-            <View className="h-2 w-2 bg-text-secondary rounded-full" />
+        <View className="flex-1 p-6 justify-end">
+          <View className="mb-12" style={{ gap: 14 }}>
+            <Text className="text-4xl font-bold text-gray-300 leading-tight">
+              Run. Conquer.
+              {"\n"}Own Your World.
+            </Text>
+            <Text className="text-base text-gray-400">
+              Transform every step into progress. Capture territory, climb leaderboards and grow stronger with the community that runs the Runiverse.
+            </Text>
+            <Text className="text-xs uppercase tracking-widest text-gray-500">
+              Seamless tracking • Territory strategy • Social motivation
+            </Text>
           </View>
-          <Link href="/login" asChild>
-            <TouchableOpacity className="bg-primary-green h-16 w-16 rounded-full items-center justify-center">
-              <FontAwesome name="arrow-right" size={24} color="black" />
-            </TouchableOpacity>
-          </Link>
+
+          {/* Progress indicators + CTA */}
+          <View className="flex-row justify-between items-center mb-2">
+            <View className="flex-row items-center" style={{ gap: 6 }}>
+              <View className="h-2 w-6 bg-primary-green rounded-full" />
+              <View className="h-2 w-2 bg-neutral-500/60 rounded-full" />
+              <View className="h-2 w-2 bg-neutral-500/40 rounded-full" />
+            </View>
+            <Link href="/login" asChild>
+              <TouchableOpacity className="bg-primary-green h-16 w-16 rounded-full items-center justify-center shadow-lg shadow-black/40">
+                <FontAwesome name="arrow-right" size={24} color="black" />
+              </TouchableOpacity>
+            </Link>
+          </View>
         </View>
       </View>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  vignette: {
+    ...StyleSheet.absoluteFillObject,
+    // radial-ish vignette using multiple shadows / gradient fallback (web/platform differences)
+    backgroundColor: 'transparent',
+    shadowColor: '#000',
+    shadowOpacity: 0.9,
+    shadowRadius: 50,
+  }
+});

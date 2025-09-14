@@ -1,24 +1,47 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, Link } from 'expo-router';
 import CustomInput from '../components/CustomInput';
-import { User } from '../lib/models/User';
+import { User as UserModel } from '../lib/models/User';
 import { authService } from '../services/AuthService';
+import { useStore } from '@/store/useStore';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const setUser = useStore(s => s.setUser);
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    const newUser = new User(lastName, username, email, mobile);
-    const result = await authService.register(newUser);
-    alert(result.message);
-    if (result.success) {
-      router.push('/login');
+    if (!username || !email || !password) {
+      Alert.alert('Validation', 'Username, email & password are required');
+      return;
+    }
+    try {
+      setLoading(true);
+      const newUser = new UserModel(lastName, username, email, mobile);
+      (newUser as any).password = password; // pass password for backend
+      const result = await authService.register(newUser as any);
+      if (!result.success || !result.user) {
+        Alert.alert('Registration Failed', result.message);
+        return;
+      }
+      setUser({
+        id: result.user.id,
+        username: result.user.username,
+        avatarUrl: result.user.avatar || 'https://i.pravatar.cc/150?u=' + result.user.id,
+        email: result.user.email,
+      } as any);
+      Alert.alert('Success', result.message, [{ text: 'Continue', onPress: () => router.replace('/(tabs)') }]);
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Unexpected error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -43,10 +66,15 @@ export default function RegisterScreen() {
       <CustomInput iconName="account-circle-outline" placeholder="Enter Username" value={username} onChangeText={setUsername} />
       <CustomInput iconName="email-outline" placeholder="Enter Email Id" value={email} onChangeText={setEmail} />
       <CustomInput iconName="phone-outline" placeholder="Mobile Number" value={mobile} onChangeText={setMobile} />
+      <CustomInput iconName="lock-outline" placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
 
-      <TouchableOpacity onPress={handleRegister} className="bg-primary-green rounded-xl p-4 mt-8 items-center">
-        <Text className="text-background-dark font-bold text-lg">NEXT</Text>
+      <TouchableOpacity onPress={handleRegister} disabled={loading} className="bg-primary-green rounded-xl p-4 mt-8 items-center">
+        {loading ? <ActivityIndicator color="#000" /> : <Text className="text-background-dark font-bold text-lg">NEXT</Text>}
       </TouchableOpacity>
+      <View className="flex-row justify-center mt-4">
+        <Text className="text-text-secondary">Already have an account? </Text>
+        <Link href="/login"><Text className="text-primary-green font-bold">Login</Text></Link>
+      </View>
     </SafeAreaView>
   );
 }

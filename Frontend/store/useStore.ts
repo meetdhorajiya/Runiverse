@@ -38,6 +38,7 @@ interface TrackingSlice {
   stopSession: () => void;
   updateSession: (updates: Partial<WalkSession>) => void;
   resetSession: () => void;
+  applyStepDelta: (deltaSteps: number) => void;
 }
 
 interface TerritorySlice {
@@ -131,6 +132,30 @@ export const useStore = create<
             path: [],
           },
         }),
+      applyStepDelta: (deltaSteps) => {
+        if (deltaSteps <= 0) return;
+        const state = get();
+        if (!state.session.isActive) return;
+        // Basic stride + calorie estimation
+        const STRIDE_M = 0.78; // average stride length in meters (tunable / could personalize)
+        const CAL_PER_STEP = 0.04; // rough average calories per step
+        const addDistance = deltaSteps * STRIDE_M;
+        const addCalories = deltaSteps * CAL_PER_STEP;
+        set({
+          session: {
+            ...state.session,
+            steps: state.session.steps + deltaSteps,
+            distance: state.session.distance + addDistance,
+            calories: state.session.calories + addCalories,
+          },
+          stats: {
+            ...state.stats,
+            totalSteps: state.stats.totalSteps + deltaSteps,
+            totalDistance: state.stats.totalDistance + addDistance,
+            totalCalories: state.stats.totalCalories + addCalories,
+          },
+        });
+      },
 
       // Territory Slice
 grid: {},

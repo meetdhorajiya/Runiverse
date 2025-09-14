@@ -17,10 +17,15 @@ Mapbox.setAccessToken(
 
 const MAPBOX_DARK_STYLE = "mapbox://styles/mapbox/dark-v11";
 
+// Style layer IDs we will insert relative to
+const BUILDING_3D_LAYER_ID = 'runiverse-buildings-3d';
+const BUILDING_SHADOW_LAYER_ID = 'runiverse-buildings-shadows';
+
 export default function MapScreen() {
    const [location, setLocation] = useState<[number, number] | null>(null);
    const [route, setRoute] = useState<[number, number][]>([]);
    const [territories, setTerritories] = useState<any[]>([]);
+   const [showBuildings, setShowBuildings] = useState(true);
    const routeStartRef = useRef<number | null>(null);
    const cameraRef = useRef<Camera>(null);
 
@@ -77,7 +82,7 @@ export default function MapScreen() {
             }
          );
       })();
-      
+
    }, []);
 
    return (
@@ -86,6 +91,7 @@ export default function MapScreen() {
             <MapView
                style={{ flex: 1 }}
                styleURL={MAPBOX_DARK_STYLE}
+
                compassEnabled={true}
                pitchEnabled={true}
                rotateEnabled={true}
@@ -95,63 +101,55 @@ export default function MapScreen() {
                }}
             >
                {/* 3D Buildings */}
-               <FillExtrusionLayer
-                  id="building-3d"
-                  sourceID="composite"
-                  sourceLayerID="building"
-                  filter={['==', ['get', 'extrude'], 'true']}
-                  minZoomLevel={0}
-                  maxZoomLevel={22}
-                  style={{
-                     fillExtrusionColor: [
-                        'interpolate',
-                        ['linear'],
-                        ['get', 'height'],
-                        0, '#e0e0e0',
-                        200, '#909090'
-                     ],
-                     fillExtrusionHeight: [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        13, 0,
-                        13.05, ['*', ['coalesce', ['get', 'height'], 10], 2.5],
-                        22, ['*', ['coalesce', ['get', 'height'], 10], 2.5]
-                     ],
-                     fillExtrusionBase: [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        13, 0,
-                        13.05, ['coalesce', ['get', 'min_height'], 0],
-                        22, ['coalesce', ['get', 'min_height'], 0]
-                     ],
-                     fillExtrusionOpacity: 0.9,
-                  }}
-                  belowLayerID="road-label"
-               />
-
-               {/* Shadows */}
-               <FillLayer
-                  id="building-shadows"
-                  sourceID="composite"
-                  sourceLayerID="building"
-                  filter={['==', ['get', 'extrude'], 'true']}
-                  style={{
-                     fillColor: '#000000',
-                     fillOpacity: [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        13, 0,
-                        14, 0.1,
-                        16, 0.2
-                     ],
-                     fillTranslate: [5, 5],
-                     fillTranslateAnchor: 'map'
-                  }}
-                  belowLayerID="building-3d"
-               />
+               {showBuildings && (
+                  <>
+                     <FillExtrusionLayer
+                        id={BUILDING_3D_LAYER_ID}
+                        sourceID="composite"
+                        sourceLayerID="building"
+                        filter={["all", ["==", ["get", "extrude"], "true"], ["has", "height"]]}
+                        minZoomLevel={14}
+                        maxZoomLevel={22}
+                        style={{
+                           fillExtrusionColor: [
+                              'interpolate', ['linear'], ['get', 'height'],
+                              0, '#4f5b66',
+                              50, '#697887',
+                              150, '#92a4b2'
+                           ],
+                           fillExtrusionHeight: [
+                              'interpolate', ['linear'], ['zoom'],
+                              14, 0,
+                              14.05, ['coalesce', ['get', 'height'], 5],
+                              22, ['*', ['coalesce', ['get', 'height'], 5], 1.2]
+                           ],
+                           fillExtrusionBase: [
+                              'coalesce', ['get', 'min_height'], 0
+                           ],
+                           fillExtrusionOpacity: 0.92,
+                        }}
+                        belowLayerID="road-label"
+                     />
+                     <FillLayer
+                        id={BUILDING_SHADOW_LAYER_ID}
+                        sourceID="composite"
+                        sourceLayerID="building"
+                        filter={["==", ["get", "extrude"], "true"]}
+                        style={{
+                           fillColor: '#000',
+                           fillOpacity: [
+                              'interpolate', ['linear'], ['zoom'],
+                              14, 0,
+                              15, 0.08,
+                              17, 0.15
+                           ],
+                           fillTranslate: [6, 6],
+                           fillTranslateAnchor: 'map'
+                        }}
+                        belowLayerID={BUILDING_3D_LAYER_ID}
+                     />
+                  </>
+               )}
 
                {/* Route line */}
                {route.length > 1 && (
@@ -199,9 +197,14 @@ export default function MapScreen() {
                />
             </MapView>
 
-            {/* <TouchableOpacity style={styles.fab} onPress={centerOnUser}>
-               <Ionicons name="locate" size={28} color="white" />
-            </TouchableOpacity> */}
+            <View style={styles.controls}>
+               <TouchableOpacity
+                  style={[styles.toggleBtn, showBuildings && styles.toggleBtnActive]}
+                  onPress={() => setShowBuildings(prev => !prev)}
+               >
+                  <Text style={styles.toggleText}>{showBuildings ? 'Hide 3D' : 'Show 3D'}</Text>
+               </TouchableOpacity>
+            </View>
          </View>
       </SafeAreaView>
    );
@@ -222,4 +225,77 @@ const styles = StyleSheet.create({
       padding: 12,
       elevation: 4,
    },
+   controls: {
+      position: 'absolute',
+      top: 16,
+      right: 16,
+      flexDirection: 'row',
+      gap: 8,
+   },
+   toggleBtn: {
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.25)'
+   },
+   toggleBtnActive: {
+      backgroundColor: '#007AFF',
+      borderColor: '#007AFF'
+   },
+   toggleText: {
+      color: '#fff',
+      fontSize: 12,
+      fontWeight: '600'
+   }
 });
+
+
+
+
+// import React, { useEffect, useState } from 'react';
+// import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+// import MapboxGL from '@rnmapbox/maps';
+// import Constants from 'expo-constants';
+
+// const mapboxToken = 'pk.eyJ1IjoiaW1hZ2luZS14IiwiYSI6ImNtZXhnemd6ODAwZXIyanF0ZWhqM3BrM2IifQ.Leh68KuE8z7Lm70Ce60NLA';
+// if (mapboxToken) {
+//    MapboxGL.setAccessToken('pk.eyJ1IjoiaW1hZ2luZS14IiwiYSI6ImNtZXhnemd6ODAwZXIyanF0ZWhqM3BrM2IifQ.Leh68KuE8z7Lm70Ce60NLA');
+// }
+
+// export default function MapScreen() {
+//    const [ready, setReady] = useState(true);
+
+//    if (!mapboxToken) {
+//       return <View style={styles.center}><Text>Missing Mapbox token.</Text></View>;
+//    }
+
+//    return (
+//       <View style={styles.page}>
+//          {!ready && (
+//             <View style={styles.loadingOverlay}>
+//                <ActivityIndicator />
+//                <Text>Loading map…</Text>
+//             </View>
+//          )}
+//          <MapboxGL.MapView
+//             style={styles.map}
+//             styleURL="mapbox://styles/imagine-x/cmf6z2psu000101qufhfo3hqs"
+//             onDidFinishRenderingMapFully={() => setReady(true)}
+//          >
+//             <MapboxGL.Camera
+//                zoomLevel={14}
+//                centerCoordinate={[72.8777, 19.076]}
+//             />
+//          </MapboxGL.MapView>
+//       </View>
+//    );
+// }
+
+// const styles = StyleSheet.create({
+//    page: { flex: 1 },
+//    map: { flex: 1 },
+//    loadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 10, backgroundColor: 'rgba(0,0,0,0.2)' },
+//    center: { flex: 1, alignItems: 'center', justifyContent: 'center' }
+// });

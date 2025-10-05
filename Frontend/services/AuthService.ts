@@ -1,5 +1,5 @@
+import api from './api';
 import { User } from '../lib/models/User';
-import { api } from './api';
 
 // This service class encapsulates all authentication-related logic.
 // Instead of having API calls scattered in the UI, we centralize them here.
@@ -18,35 +18,100 @@ class AuthService {
     return AuthService.instance;
   }
 
-  getToken() { return this.token; }
-  setToken(t: string | null) { this.token = t; }
+  getToken(): string | null {
+    return this.token;
+  }
+
+  setToken(token: string | null): void {
+    this.token = token;
+  }
 
   async login(email: string, password: string): Promise<{ success: boolean; message: string; user?: any; token?: string }> {
     try {
-      const resp = await api.post<{ msg: string; token: string; user: any }>(`/api/auth/login`, { email, password });
-      this.token = resp.token;
-      return { success: true, message: resp.msg, user: resp.user, token: resp.token };
-    } catch (e: any) {
-      return { success: false, message: e.message || 'Login failed' };
+      const response = await api.post<any>("/api/auth/login", {
+        email,
+        password
+      });
+
+      if (response.token) {
+        this.setToken(response.token);
+        return { 
+          success: true, 
+          message: "Login successful", 
+          user: response.user, 
+          token: response.token 
+        };
+      } else {
+        return { success: false, message: "Login failed - no token received" };
+      }
+    } catch (error: any) {
+      console.error("Login error:", error);
+      return { 
+        success: false, 
+        message: error.message || "Login failed" 
+      };
     }
   }
 
   async register(userData: User & { password?: string }): Promise<{ success: boolean; message: string; user?: any; token?: string }> {
     try {
-      // For now generate a temporary password if not supplied (backend requires one)
-      const password = userData['password'] || 'Password123!';
-      const body = { username: userData.username, email: userData.email, password };
-      const resp = await api.post<{ msg: string; token: string; user: any }>(`/api/auth/register`, body);
-      this.token = resp.token;
-      return { success: true, message: resp.msg, user: resp.user, token: resp.token };
-    } catch (e: any) {
-      return { success: false, message: e.message || 'Registration failed' };
+      const response = await api.post<any>("/api/auth/register", {
+        username: userData.username,
+        email: userData.email,
+        password: userData.password,
+        lastName: userData.lastName,
+        mobileNumber: userData.mobileNumber
+      });
+
+      if (response.token) {
+        this.setToken(response.token);
+        return { 
+          success: true, 
+          message: "Registration successful", 
+          user: response.user, 
+          token: response.token 
+        };
+      } else {
+        return { success: false, message: "Registration failed - no token received" };
+      }
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      return { 
+        success: false, 
+        message: error.message || "Registration failed" 
+      };
     }
   }
 
-  async socialLogin(provider: 'google'): Promise<{ success: boolean; message?: string }> {
-    // Placeholder – would open WebBrowser to backend /api/auth/google for OAuth
-    return { success: false, message: 'Not implemented yet' };
+  async socialLogin(provider: string): Promise<{ success: boolean; message: string; user?: any; token?: string }> {
+    // This would typically open a WebView for OAuth
+    // For now, return a placeholder
+    return { success: false, message: "Social login not implemented yet" };
+  }
+
+  // Directly call backend callback (DEV convenience) - real flow should use browser redirect.
+  async googleCallbackDev(): Promise<{ success: boolean; message: string; user?: any; token?: string }> {
+    try {
+      const response = await api.get<any>("/api/auth/google/callback");
+      
+      if (response.token) {
+        this.setToken(response.token);
+        return { 
+          success: true, 
+          message: "Google login successful", 
+          user: response.user, 
+          token: response.token 
+        };
+      } else {
+        return { success: false, message: "Google login failed - no token received" };
+      }
+    } catch (error: any) {
+      console.error("Google login error:", error);
+      return { 
+        success: false, 
+        message: error.message || "Google login failed" 
+      };
+    }
   }
 }
 

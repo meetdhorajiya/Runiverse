@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import Mapbox, { Camera, MapView, UserLocation, ShapeSource, LineLayer, FillLayer, FillExtrusionLayer } from '@rnmapbox/maps';
+import { StatusBar } from 'expo-status-bar';
+import Mapbox, { Camera, MapView, UserLocation, ShapeSource, LineLayer, FillLayer, FillExtrusionLayer, VectorSource } from '@rnmapbox/maps';
 import * as Location from 'expo-location';
-import { Ionicons } from "@expo/vector-icons"; // Expo vector icons
 import {
    isClosedLoop,
-   haversineMeters,
    pathLengthMeters,
    polygonAreaMeters2,
 } from "@/utils/loopDetection";
@@ -17,9 +16,17 @@ Mapbox.setAccessToken(
 
 const MAPBOX_DARK_STYLE = "mapbox://styles/mapbox/dark-v11";
 
-// Style layer IDs we will insert relative to
-const BUILDING_3D_LAYER_ID = 'runiverse-buildings-3d';
-const BUILDING_SHADOW_LAYER_ID = 'runiverse-buildings-shadows';
+// Mapbox Streets vector source + layer identifiers for 3D buildings
+const BUILDING_SOURCE_ID = 'mapbox-buildings-source';
+const BUILDING_3D_LAYER_ID = 'mapbox-buildings-3d';
+const BUILDING_SHADOW_LAYER_ID = 'mapbox-buildings-shadows';
+
+// Tracking tuning
+const MIN_ACCURACY_METERS = 25;
+const MIN_DISTANCE_DELTA_METERS = 3;
+const MIN_SPEED_MS = 0.4;
+const MIN_TIME_BETWEEN_UPDATES_MS = 750;
+const SMOOTHING_ALPHA = 0.25;
 
 export default function MapScreen() {
    const [location, setLocation] = useState<[number, number] | null>(null);
@@ -28,87 +35,135 @@ export default function MapScreen() {
    const [showBuildings, setShowBuildings] = useState(true);
    const routeStartRef = useRef<number | null>(null);
    const cameraRef = useRef<Camera>(null);
+   const watchRef = useRef<Location.LocationSubscription | null>(null);
+   const prevAcceptedCoordRef = useRef<[number, number] | null>(null);
+   const lastTimestampRef = useRef<number | null>(null);
+   const insets = useSafeAreaInsets();
 
    useEffect(() => {
-      (async () => {
-         let { status } = await Location.requestForegroundPermissionsAsync();
+      let isMounted = true;
+
+      const handleLocationUpdate = (loc: Location.LocationObject) => {
+         const { accuracy } = loc.coords;
+         const speed = loc.coords.speed ?? 0;
+
+         if (accuracy && accuracy > MIN_ACCURACY_METERS) {
+            return;
+         }
+
+         const timestamp = loc.timestamp ?? Date.now();
+         if (lastTimestampRef.current && timestamp - lastTimestampRef.current < MIN_TIME_BETWEEN_UPDATES_MS) {
+            return;
+         }
+         lastTimestampRef.current = timestamp;
+
+         const rawCoord: [number, number] = [loc.coords.longitude, loc.coords.latitude];
+         const smoothedCoord = smoothCoordinate(prevAcceptedCoordRef.current, rawCoord);
+         prevAcceptedCoordRef.current = smoothedCoord;
+         setLocation(smoothedCoord);
+
+         setRoute((prev) => {
+            if (prev.length === 0) {
+               routeStartRef.current = Date.now();
+               return [smoothedCoord];
+            }
+
+            const lastCoord = prev[prev.length - 1];
+            const distToLast = distance(lastCoord, smoothedCoord);
+
+            if (distToLast < MIN_DISTANCE_DELTA_METERS && speed < MIN_SPEED_MS) {
+               return prev;
+            }
+
+            const newPath = [...prev, smoothedCoord];
+
+            if (isClosedLoop(newPath, routeStartRef.current)) {
+               const area = polygonAreaMeters2(newPath);
+               const MIN_AREA = 100;
+
+               if (area > MIN_AREA) {
+                  setTerritories((prevT) => [
+                     ...prevT,
+                     {
+                        type: "Feature",
+                        geometry: {
+                           type: "Polygon",
+                           coordinates: [[...newPath, newPath[0]]],
+                        },
+                        properties: {
+                           area,
+                           length: pathLengthMeters(newPath),
+                        },
+                     },
+                  ]);
+               }
+               routeStartRef.current = null;
+               return [];
+            }
+
+            return newPath;
+         });
+      };
+
+      const startTracking = async () => {
+         const { status } = await Location.requestForegroundPermissionsAsync();
          if (status !== "granted") {
             alert("Permission to access location was denied");
             return;
          }
 
-         await Location.watchPositionAsync(
+         try {
+            await Location.enableNetworkProviderAsync();
+         } catch (err) {
+            console.warn('Network provider enable failed', err);
+         }
+
+         watchRef.current?.remove();
+         watchRef.current = await Location.watchPositionAsync(
             {
-               accuracy: Location.Accuracy.BestForNavigation, // best for walk tracking
-               timeInterval: 1000,
-               distanceInterval: 2,
+               accuracy: Location.Accuracy.BestForNavigation,
+               timeInterval: MIN_TIME_BETWEEN_UPDATES_MS,
+               distanceInterval: Math.max(1, MIN_DISTANCE_DELTA_METERS - 1),
+               mayShowUserSettingsDialog: true,
             },
             (loc) => {
-               const coords: [number, number] = [
-                  loc.coords.longitude,
-                  loc.coords.latitude,
-               ];
-               setLocation(coords);
-
-               setRoute((prev) => {
-                  if (prev.length === 0) {
-                     routeStartRef.current = Date.now();
-                  }
-
-                  const newPath = [...prev, coords];
-                  setRoute((prev) => [...prev, coords]);
-
-                  if (isClosedLoop(newPath, routeStartRef.current)) {
-                     setTerritories((prevT) => [
-                        ...prevT,
-                        {
-                           type: "Feature",
-                           geometry: {
-                              type: "Polygon",
-                              coordinates: [[...newPath, newPath[0]]],
-                           },
-                           properties: {
-                              area: polygonAreaMeters2(newPath),
-                              length: pathLengthMeters(newPath),
-                           },
-                        },
-                     ]);
-                     routeStartRef.current = null;
-                     return [];
-                  }
-
-                  return newPath;
-               });
+               if (!isMounted) return;
+               handleLocationUpdate(loc);
             }
          );
-      })();
+      };
 
+      startTracking();
+
+      return () => {
+         isMounted = false;
+         watchRef.current?.remove();
+         watchRef.current = null;
+      };
    }, []);
-
    return (
-      <SafeAreaView style={{ flex: 1 }}>
-         <View style={{ flex: 1 }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }} edges={['bottom', 'left', 'right']}>
+         <StatusBar style="auto" />
+         <View style={{ flex: 1, backgroundColor: '#000', paddingTop: insets.top + 8 }}>
             <MapView
                style={{ flex: 1 }}
                styleURL={MAPBOX_DARK_STYLE}
-
                compassEnabled={true}
                pitchEnabled={true}
                rotateEnabled={true}
                zoomEnabled={true}
                onDidFinishLoadingStyle={() => {
-                  console.log('Dark map style loaded with 3D buildings');
+                  console.log('Dark map style loaded with custom 3D buildings');
                }}
             >
-               {/* 3D Buildings */}
+               {/* Global 3D Buildings from Mapbox Streets */}
                {showBuildings && (
-                  <>
+                  <VectorSource id={BUILDING_SOURCE_ID} url="mapbox://mapbox.mapbox-streets-v8">
                      <FillExtrusionLayer
                         id={BUILDING_3D_LAYER_ID}
-                        sourceID="composite"
+                        sourceID={BUILDING_SOURCE_ID}
                         sourceLayerID="building"
-                        filter={["all", ["==", ["get", "extrude"], "true"], ["has", "height"]]}
-                        minZoomLevel={14}
+                        minZoomLevel={13}
                         maxZoomLevel={22}
                         style={{
                            fillExtrusionColor: [
@@ -119,39 +174,37 @@ export default function MapScreen() {
                            ],
                            fillExtrusionHeight: [
                               'interpolate', ['linear'], ['zoom'],
-                              14, 0,
-                              14.05, ['coalesce', ['get', 'height'], 5],
-                              22, ['*', ['coalesce', ['get', 'height'], 5], 1.2]
+                              13, 0,
+                              13.05, ['coalesce', ['get', 'height'], 5],
+                              18, ['*', ['coalesce', ['get', 'height'], 5], 1.5],
+                              22, ['*', ['coalesce', ['get', 'height'], 5], 2]
                            ],
                            fillExtrusionBase: [
                               'coalesce', ['get', 'min_height'], 0
                            ],
                            fillExtrusionOpacity: 0.92,
                         }}
-                        belowLayerID="road-label"
                      />
                      <FillLayer
                         id={BUILDING_SHADOW_LAYER_ID}
-                        sourceID="composite"
+                        sourceID={BUILDING_SOURCE_ID}
                         sourceLayerID="building"
-                        filter={["==", ["get", "extrude"], "true"]}
                         style={{
                            fillColor: '#000',
                            fillOpacity: [
                               'interpolate', ['linear'], ['zoom'],
-                              14, 0,
-                              15, 0.08,
+                              13, 0,
+                              14, 0.08,
                               17, 0.15
                            ],
                            fillTranslate: [6, 6],
                            fillTranslateAnchor: 'map'
                         }}
-                        belowLayerID={BUILDING_3D_LAYER_ID}
                      />
-                  </>
+                  </VectorSource>
                )}
 
-               {/* Route line */}
+               {/* Current route line */}
                {route.length > 1 && (
                   <ShapeSource
                      id="routeSource"
@@ -163,7 +216,16 @@ export default function MapScreen() {
                            coordinates: route,
                         },
                      }}
-                  ></ShapeSource>
+                  >
+                     <LineLayer
+                        id="routeLine"
+                        style={{
+                           lineColor: '#00FF00',
+                           lineWidth: 4,
+                           lineOpacity: 0.8,
+                        }}
+                     />
+                  </ShapeSource>
                )}
                {/* Territories */}
                {territories.map((territory, index) => (
@@ -173,6 +235,14 @@ export default function MapScreen() {
                         style={{
                            fillColor: "rgba(255,0,0,0.4)",
                            fillOutlineColor: "red",
+                        }}
+                     />
+                     <LineLayer
+                        id={`territory-line-${index}`}
+                        style={{
+                           lineColor: 'red',
+                           lineWidth: 3,
+                           lineOpacity: 0.9,
                         }}
                      />
                   </ShapeSource>
@@ -197,7 +267,7 @@ export default function MapScreen() {
                />
             </MapView>
 
-            <View style={styles.controls}>
+            <View style={[styles.controls, { left: insets.left + 16, top: insets.top + 20 }]}>
                <TouchableOpacity
                   style={[styles.toggleBtn, showBuildings && styles.toggleBtnActive]}
                   onPress={() => setShowBuildings(prev => !prev)}
@@ -219,6 +289,7 @@ const styles = StyleSheet.create({
    fab: {
       position: "absolute",
       bottom: 20,
+      top: 20,
       right: 20,
       backgroundColor: "#007AFF",
       borderRadius: 30,
@@ -227,13 +298,15 @@ const styles = StyleSheet.create({
    },
    controls: {
       position: 'absolute',
-      top: 16,
-      right: 16,
+      top: 12,
+      left: 16,
       flexDirection: 'row',
       gap: 8,
    },
    toggleBtn: {
       backgroundColor: 'rgba(0,0,0,0.5)',
+      position: 'relative',
+      top: 20,
       paddingVertical: 8,
       paddingHorizontal: 14,
       borderRadius: 20,
@@ -251,51 +324,34 @@ const styles = StyleSheet.create({
    }
 });
 
+function smoothCoordinate(prev: [number, number] | null, next: [number, number]): [number, number] {
+   if (!prev) {
+      return next;
+   }
 
+   const [prevLon, prevLat] = prev;
+   const [nextLon, nextLat] = next;
 
+   const lon = prevLon + SMOOTHING_ALPHA * (nextLon - prevLon);
+   const lat = prevLat + SMOOTHING_ALPHA * (nextLat - prevLat);
 
-// import React, { useEffect, useState } from 'react';
-// import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
-// import MapboxGL from '@rnmapbox/maps';
-// import Constants from 'expo-constants';
+   return [lon, lat];
+}
 
-// const mapboxToken = 'pk.eyJ1IjoiaW1hZ2luZS14IiwiYSI6ImNtZXhnemd6ODAwZXIyanF0ZWhqM3BrM2IifQ.Leh68KuE8z7Lm70Ce60NLA';
-// if (mapboxToken) {
-//    MapboxGL.setAccessToken('pk.eyJ1IjoiaW1hZ2luZS14IiwiYSI6ImNtZXhnemd6ODAwZXIyanF0ZWhqM3BrM2IifQ.Leh68KuE8z7Lm70Ce60NLA');
-// }
+// Reusing the distance function from loopDetection.ts (assuming it's exported)
+function distance(coord1: [number, number], coord2: [number, number]): number {
+   const [lon1, lat1] = coord1;
+   const [lon2, lat2] = coord2;
+   const R = 6371e3; // Earth radius in meters
+   const φ1 = lat1 * Math.PI / 180;
+   const φ2 = lat2 * Math.PI / 180;
+   const Δφ = (lat2 - lat1) * Math.PI / 180;
+   const Δλ = (lon2 - lon1) * Math.PI / 180;
 
-// export default function MapScreen() {
-//    const [ready, setReady] = useState(true);
+   const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) *
+      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-//    if (!mapboxToken) {
-//       return <View style={styles.center}><Text>Missing Mapbox token.</Text></View>;
-//    }
-
-//    return (
-//       <View style={styles.page}>
-//          {!ready && (
-//             <View style={styles.loadingOverlay}>
-//                <ActivityIndicator />
-//                <Text>Loading map…</Text>
-//             </View>
-//          )}
-//          <MapboxGL.MapView
-//             style={styles.map}
-//             styleURL="mapbox://styles/imagine-x/cmf6z2psu000101qufhfo3hqs"
-//             onDidFinishRenderingMapFully={() => setReady(true)}
-//          >
-//             <MapboxGL.Camera
-//                zoomLevel={14}
-//                centerCoordinate={[72.8777, 19.076]}
-//             />
-//          </MapboxGL.MapView>
-//       </View>
-//    );
-// }
-
-// const styles = StyleSheet.create({
-//    page: { flex: 1 },
-//    map: { flex: 1 },
-//    loadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 10, backgroundColor: 'rgba(0,0,0,0.2)' },
-//    center: { flex: 1, alignItems: 'center', justifyContent: 'center' }
-// });
+   return R * c;
+}

@@ -5,6 +5,7 @@ import { useRouter, Link } from 'expo-router';
 import CustomInput from '../components/CustomInput';
 import { User as UserModel } from '../lib/models/User';
 import { authService } from '../services/AuthService';
+import { profileService } from '../services/profileService';
 import { useStore } from '@/store/useStore';
 
 export default function RegisterScreen() {
@@ -25,18 +26,35 @@ export default function RegisterScreen() {
     try {
       setLoading(true);
       const newUser = new UserModel(lastName, username, email, mobile);
-      (newUser as any).password = password; // pass password for backend
+      (newUser as any).password = password; // backend expects plain password here (hashed server-side)
       const result = await authService.register(newUser as any);
       if (!result.success || !result.user) {
         Alert.alert('Registration Failed', result.message);
         return;
       }
-      setUser({
+
+      const baseUser = {
         id: result.user.id,
         username: result.user.username,
         avatarUrl: result.user.avatar || 'https://i.pravatar.cc/150?u=' + result.user.id,
         email: result.user.email,
-      } as any);
+        steps: result.user.steps,
+        distance: result.user.distance,
+        territories: result.user.territories,
+      } as any;
+
+      // Enrich with /me endpoint (in case backend adds more fields later)
+      try {
+        const prof = await profileService.fetchMe();
+        if (prof.success && prof.data) {
+          setUser({ ...baseUser, ...prof.data } as any);
+        } else {
+          setUser(baseUser);
+        }
+      } catch {
+        setUser(baseUser);
+      }
+
       Alert.alert('Success', result.message, [{ text: 'Continue', onPress: () => router.replace('/(tabs)') }]);
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Unexpected error');

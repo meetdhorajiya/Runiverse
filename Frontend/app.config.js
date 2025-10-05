@@ -22,6 +22,11 @@ export default ({ config }) => {
          newArchEnabled: false,
          ios: {
             supportsTablet: true,
+            infoPlist: {
+               NSAppTransportSecurity: {
+                  NSAllowsArbitraryLoads: true, // dev only; prefer ATS exceptions per domain in prod
+               },
+            },
          },
          android: {
             adaptiveIcon: {
@@ -40,6 +45,7 @@ export default ({ config }) => {
                notificationTitle: 'Walking Route Active',
                notificationBody: 'Tracking your path for the fitness app.',
             },
+            usesCleartextTraffic: true, // allow http:// for dev
          },
          web: {
             bundler: 'metro',

@@ -5,10 +5,8 @@ import { Link, useRouter } from 'expo-router';
 import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { authService } from '../services/AuthService';
+import { profileService } from '@/services/profileService';
 import { useStore } from '@/store/useStore';
-
-// Development bypass flag. Set to false to restore real authentication.
-const DEV_BYPASS = true;
 
 const LoginScreen = () => {
   const { theme } = useTheme();
@@ -20,39 +18,73 @@ const LoginScreen = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Enable dev-only direct login via env flag
+  const ENABLE_DEV_LOGIN = process.env.EXPO_PUBLIC_ENABLE_DEV_LOGIN === 'true';
+
   const handleLogin = async () => {
-    if (DEV_BYPASS) {
-      // Directly set a dummy user and navigate
-      setUser({
-        id: 'dev-user',
-        username: 'DevUser',
-        avatarUrl: 'https://i.pravatar.cc/150?u=dev-user',
-        email: 'dev@local.test'
-      } as any);
-      router.replace('/(tabs)');
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
-    if (!email || !password) {
-      Alert.alert('Validation', 'Email and password required');
-      return;
+    setLoading(true);
+    
+    // Dev bypass (only in Debug + when enabled)
+    if (__DEV__ && ENABLE_DEV_LOGIN && email === 'dev' && password === 'dev') {
+      return devDirectLogin();
     }
+
+    try {
+      console.log('Attempting login with:', { email, baseUrl: process.env.EXPO_PUBLIC_API_BASE_URL });
+      
+      const result = await authService.login(email, password);
+      console.log('Login result:', result);
+      
+      if (result.success && result.user && result.token) {
+        // Build base user from auth response
+        const baseUser = {
+          id: result.user._id || result.user.id,
+          username: result.user.username,
+          avatarUrl: result.user.avatar || result.user.avatarUrl || `https://i.pravatar.cc/150?u=${result.user._id || result.user.id}`,
+          email: result.user.email,
+          lastName: result.user.lastName || '',
+          mobileNumber: result.user.mobileNumber || '',
+          steps: result.user.steps || 0,
+          distance: result.user.distance || 0,
+          territories: result.user.territories || 0,
+        };
+
+        try {
+          // Enrich with profile data
+          const profileResult = await profileService.fetchMe();
+          if (profileResult.success && profileResult.data) {
+            setUser({ ...baseUser, ...profileResult.data } as any);
+          } else {
+            setUser(baseUser as any);
+          }
+          router.replace('/(tabs)');
+        } catch (profileError) {
+          console.warn('Profile fetch failed, using basic user data:', profileError);
+          setUser(baseUser as any);
+          router.replace('/(tabs)');
+        }
+      } else {
+        Alert.alert('Login Failed', result.message);
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      Alert.alert('Login Error', error.message || 'Network request failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Dev-only direct login helper
+  const devDirectLogin = async () => {
     try {
       setLoading(true);
-      const { success, message, user } = await authService.login(email.trim(), password);
-      if (!success || !user) {
-        Alert.alert('Login Failed', message);
-        return;
-      }
-      setUser({
-        id: user.id,
-        username: user.username,
-        avatarUrl: user.avatar || user.avatarUrl || 'https://i.pravatar.cc/150?u=' + user.id,
-        email: user.email,
-      } as any);
+      // Skip authentication entirely - backend under construction
       router.replace('/(tabs)');
-    } catch (e: any) {
-      Alert.alert('Error', e.message || 'Unexpected error');
     } finally {
       setLoading(false);
     }
@@ -111,6 +143,17 @@ const LoginScreen = () => {
         >
           {loading ? <ActivityIndicator color="#000" /> : <Text className="text-black text-lg font-bold">Log In</Text>}
         </TouchableOpacity>
+        
+
+        {__DEV__ && ENABLE_DEV_LOGIN && (
+          <TouchableOpacity
+            onPress={devDirectLogin}
+            disabled={loading}
+            className="bg-yellow-400 p-3 rounded-xl items-center justify-center shadow-sm mt-3"
+          >
+            <Text className="text-black font-semibold">Dev: Direct Login</Text>
+          </TouchableOpacity>
+        )}
 
         <View className="flex-row justify-center mt-6">
           <Text className={`text-base ${secondaryTextClass}`}>Don't have an account? </Text>

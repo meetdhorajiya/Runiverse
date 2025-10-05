@@ -1,114 +1,68 @@
-// utils/loopDetection.ts
+// src/utils/loopDetection.ts
 
-// --- Thresholds (you can tweak) ---
-const MIN_POINTS = 60;
-const MIN_ADD_DISTANCE_METERS = 4;
-const MIN_LOOP_CLOSE_METERS = 30;
-const MIN_PATH_LENGTH_METERS = 120;
-const MIN_AREA_METERS2 = 500;
-const MIN_DURATION_MS = 20_000;
-const MIN_BBOX_DIAG_METERS = 30;
+export function distance(coord1: [number, number], coord2: [number, number]): number {
+  const [lon1, lat1] = coord1;
+  const [lon2, lat2] = coord2;
+  const R = 6371e3; // Earth radius in meters
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
 
-const toRadians = (deg: number) => (deg * Math.PI) / 180;
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-// Haversine distance between [lng, lat] in meters
-export const haversineMeters = (a: [number, number], b: [number, number]) => {
-   const [lon1, lat1] = a;
-   const [lon2, lat2] = b;
-   const R = 6371000;
-   const dLat = toRadians(lat2 - lat1);
-   const dLon = toRadians(lon2 - lon1);
-   const rLat1 = toRadians(lat1);
-   const rLat2 = toRadians(lat2);
+  return R * c;
+}
 
-   const sinDlat = Math.sin(dLat / 2);
-   const sinDlon = Math.sin(dLon / 2);
-   const aHav =
-      sinDlat * sinDlat + Math.cos(rLat1) * Math.cos(rLat2) * sinDlon * sinDlon;
-   const c = 2 * Math.atan2(Math.sqrt(aHav), Math.sqrt(1 - aHav));
-   return R * c;
-};
+export function pathLengthMeters(path: [number, number][]): number {
+  let length = 0;
+  for (let i = 1; i < path.length; i++) {
+    length += distance(path[i - 1], path[i]);
+  }
+  return length;
+}
 
-// total path length
-export const pathLengthMeters = (pts: [number, number][]) => {
-   if (pts.length < 2) return 0;
-   let sum = 0;
-   for (let i = 1; i < pts.length; i++) {
-      sum += haversineMeters(pts[i - 1], pts[i]);
-   }
-   return sum;
-};
+export function polygonAreaMeters2(points: [number, number][]): number {
+  if (points.length < 3) return 0;
 
-// polygon area in m² (shoelace formula with lat/lon → meters conversion)
-export const polygonAreaMeters2 = (pts: [number, number][]) => {
-   if (pts.length < 3) return 0;
-   const meanLat =
-      pts.reduce((acc, p) => acc + p[1], 0) / Math.max(1, pts.length);
-   const latFactor = 110574;
-   const lonFactor = 111320 * Math.cos(toRadians(meanLat));
+  // Approximate shoelace formula with meter conversion for small areas
+  const n = points.length;
+  let area = 0;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const [x1, y1] = points[i]; // lon, lat
+    const [x2, y2] = points[j];
+    area += x1 * y2 - x2 * y1;
+  }
+  area = Math.abs(area) / 2;
 
-   const XY = pts.map(([lon, lat]) => [lon * lonFactor, lat * latFactor]);
+  // Convert degrees to meters (approximation using average latitude)
+  const avgLat = points.reduce((sum, p) => sum + p[1], 0) / n;
+  const metersPerDegLat = 111132.92 - 559.82 * Math.cos(2 * avgLat * Math.PI / 180) + 1.175 * Math.cos(4 * avgLat * Math.PI / 180);
+  const metersPerDegLon = (Math.PI / 180) * 6367449 * Math.cos(avgLat * Math.PI / 180);
 
-   let area = 0;
-   for (let i = 0; i < XY.length; i++) {
-      const [x1, y1] = XY[i];
-      const [x2, y2] = XY[(i + 1) % XY.length];
-      area += x1 * y2 - x2 * y1;
-   }
-   return Math.abs(area) / 2;
-};
+  return area * metersPerDegLon * metersPerDegLat;
+}
 
-// bounding box diagonal in meters
-export const bboxDiagMeters = (pts: [number, number][]) => {
-   if (pts.length === 0) return 0;
-   let minLat = Infinity,
-      maxLat = -Infinity,
-      minLon = Infinity,
-      maxLon = -Infinity;
-   for (const [lon, lat] of pts) {
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-      if (lon < minLon) minLon = lon;
-      if (lon > maxLon) maxLon = lon;
-   }
-   return haversineMeters([minLon, minLat], [maxLon, maxLat]);
-};
+export function isClosedLoop(path: [number, number][], startTime: number | null): boolean {
+  if (path.length < 3 || startTime === null) return false;
 
-// --- Main Loop Detection Function ---
-export const isClosedLoop = (
-   points: [number, number][],
-   startTime: number | null
-): boolean => {
-   if (points.length < MIN_POINTS) return false;
+  const start = path[0];
+  const end = path[path.length - 1];
+  const distToStart = distance(start, end);
+  const elapsed = Date.now() - startTime;
+  const pathLen = pathLengthMeters(path);
 
-   const first = points[0];
-   const last = points[points.length - 1];
-   const closeDist = haversineMeters(first, last);
-   if (closeDist > MIN_LOOP_CLOSE_METERS) return false;
+  // Parameters to prevent small or invalid loops:
+  // - Min elapsed time: 30 seconds (to avoid quick accidental loops)
+  // - Min path length: 50 meters (to avoid tiny loops)
+  // - Max distance to close: 20 meters (GPS accuracy tolerance)
+  const MIN_TIME = 30000; // 30 seconds
+  const MIN_PATH_LENGTH = 50; // meters
+  const MAX_CLOSE_DISTANCE = 20; // meters
 
-   const totalLen = pathLengthMeters(points);
-   if (totalLen < MIN_PATH_LENGTH_METERS) return false;
-
-   const area = polygonAreaMeters2([...points, points[0]]);
-   if (area < MIN_AREA_METERS2) return false;
-
-   const bboxDiag = bboxDiagMeters(points);
-   if (bboxDiag < MIN_BBOX_DIAG_METERS) return false;
-
-   if (startTime == null) return false;
-   const duration = Date.now() - startTime;
-   if (duration < MIN_DURATION_MS) return false;
-
-   return true;
-};
-
-// Export thresholds if you want to tweak them in other places
-export const LOOP_THRESHOLDS = {
-   MIN_POINTS,
-   MIN_ADD_DISTANCE_METERS,
-   MIN_LOOP_CLOSE_METERS,
-   MIN_PATH_LENGTH_METERS,
-   MIN_AREA_METERS2,
-   MIN_DURATION_MS,
-   MIN_BBOX_DIAG_METERS,
-};
+  return distToStart < MAX_CLOSE_DISTANCE && elapsed > MIN_TIME && pathLen > MIN_PATH_LENGTH;
+}

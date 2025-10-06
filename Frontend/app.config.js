@@ -87,7 +87,8 @@ export default ({ config }) => {
             eas: {
                projectId: '5233a97b-f485-4172-a36c-db748f469175',
             },
-            mapboxToken: process.env.MAPBOX_DOWNLOAD_TOKEN
+            mapboxToken: process.env.MAPBOX_DOWNLOAD_TOKEN,
+            apiUrl: "http://10.32.97.244:5000", // Local dev API URL
          },
          owner: 'imagine_x',
       },

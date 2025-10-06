@@ -5,7 +5,6 @@ import { Link, useRouter } from 'expo-router';
 import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { authService } from '../services/AuthService';
-import { profileService } from '@/services/profileService';
 import { useStore } from '@/store/useStore';
 
 const LoginScreen = () => {
@@ -23,57 +22,30 @@ const LoginScreen = () => {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert('Missing Info', 'Email and password are required');
       return;
     }
 
     setLoading(true);
-    
-    // Dev bypass (only in Debug + when enabled)
+
     if (__DEV__ && ENABLE_DEV_LOGIN && email === 'dev' && password === 'dev') {
       return devDirectLogin();
     }
 
     try {
-      console.log('Attempting login with:', { email, baseUrl: process.env.EXPO_PUBLIC_API_BASE_URL });
-      
       const result = await authService.login(email, password);
-      console.log('Login result:', result);
-      
-      if (result.success && result.user && result.token) {
-        // Build base user from auth response
-        const baseUser = {
-          id: result.user._id || result.user.id,
-          username: result.user.username,
-          avatarUrl: result.user.avatar || result.user.avatarUrl || `https://i.pravatar.cc/150?u=${result.user._id || result.user.id}`,
-          email: result.user.email,
-          lastName: result.user.lastName || '',
-          mobileNumber: result.user.mobileNumber || '',
-          steps: result.user.steps || 0,
-          distance: result.user.distance || 0,
-          territories: result.user.territories || 0,
-        };
 
-        try {
-          // Enrich with profile data
-          const profileResult = await profileService.fetchMe();
-          if (profileResult.success && profileResult.data) {
-            setUser({ ...baseUser, ...profileResult.data } as any);
-          } else {
-            setUser(baseUser as any);
-          }
-          router.replace('/(tabs)');
-        } catch (profileError) {
-          console.warn('Profile fetch failed, using basic user data:', profileError);
-          setUser(baseUser as any);
-          router.replace('/(tabs)');
+      if (result.success && result.token) {
+        if (result.user) {
+          setUser(result.user as any);
         }
+        Alert.alert('✅ Success', result.message || 'Logged in successfully');
+        router.replace('/(tabs)');
       } else {
-        Alert.alert('Login Failed', result.message);
+        Alert.alert('❌ Error', result.message || 'Unable to log in');
       }
     } catch (error: any) {
-      console.error('Login error:', error);
-      Alert.alert('Login Error', error.message || 'Network request failed');
+      Alert.alert('Login Error', error?.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -83,6 +55,7 @@ const LoginScreen = () => {
   const devDirectLogin = async () => {
     try {
       setLoading(true);
+      Alert.alert('✅ Dev Login', 'Bypassing authentication for development.');
       // Skip authentication entirely - backend under construction
       router.replace('/(tabs)');
     } finally {

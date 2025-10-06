@@ -3,14 +3,10 @@ import { View, Text, TouchableOpacity, Image, Alert, ActivityIndicator } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Link } from 'expo-router';
 import CustomInput from '../components/CustomInput';
-import { User as UserModel } from '../lib/models/User';
 import { authService } from '../services/AuthService';
-import { profileService } from '../services/profileService';
-import { useStore } from '@/store/useStore';
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const setUser = useStore(s => s.setUser);
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -25,39 +21,25 @@ export default function RegisterScreen() {
     }
     try {
       setLoading(true);
-      const newUser = new UserModel(lastName, username, email, mobile);
-      (newUser as any).password = password; // backend expects plain password here (hashed server-side)
-      const result = await authService.register(newUser as any);
-      if (!result.success || !result.user) {
-        Alert.alert('Registration Failed', result.message);
-        return;
-      }
-
-      const baseUser = {
-        id: result.user.id,
-        username: result.user.username,
-        avatarUrl: result.user.avatar || 'https://i.pravatar.cc/150?u=' + result.user.id,
-        email: result.user.email,
-        steps: result.user.steps,
-        distance: result.user.distance,
-        territories: result.user.territories,
+      const payload = {
+        username,
+        email,
+        password,
+        lastName,
+        mobileNumber: mobile,
       } as any;
 
-      // Enrich with /me endpoint (in case backend adds more fields later)
-      try {
-        const prof = await profileService.fetchMe();
-        if (prof.success && prof.data) {
-          setUser({ ...baseUser, ...prof.data } as any);
-        } else {
-          setUser(baseUser);
-        }
-      } catch {
-        setUser(baseUser);
-      }
+      const result = await authService.register(payload);
 
-      Alert.alert('Success', result.message, [{ text: 'Continue', onPress: () => router.replace('/(tabs)') }]);
+      if (result.success) {
+        Alert.alert('✅ Registered', result.message || 'Account created successfully', [
+          { text: 'Continue', onPress: () => router.replace('/login') },
+        ]);
+      } else {
+        Alert.alert('❌ Error', result.message || 'Registration failed');
+      }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Unexpected error');
+      Alert.alert('❌ Error', e?.message || 'Unexpected error');
     } finally {
       setLoading(false);
     }

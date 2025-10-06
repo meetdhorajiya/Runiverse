@@ -3,7 +3,8 @@ import { authMiddleware } from "../middlewares/auth.js";
 import { 
   getProfile, 
   updateProfile, 
-  syncStats
+  syncStats,
+  addBadge 
 } from "../controllers/userController.js";
 
 const router = express.Router();

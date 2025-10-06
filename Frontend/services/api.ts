@@ -1,31 +1,76 @@
 // src/services/api.ts
-const BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://10.32.97.244:5000"; 
-// ⚠️ Replace with your laptop IP
+const BASE_URL = "http://10.32.97.244:5000"; // ⚠️ Replace with your local IP when testing on device
 
-export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  error?: string;
-}
+export const api = {
+  baseURL: BASE_URL,
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+  async get<T>(path: string, token?: string): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
 
-  if (!res.ok) {
-    throw new Error(`Request failed: ${res.status}`);
-  }
-  return res.json();
-}
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`GET ${path} failed: ${errText}`);
+    }
 
-export default request;
+    return res.json();
+  },
+
+  async post<T>(path: string, body: any, token?: string): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`POST ${path} failed: ${errText}`);
+    }
+
+    return res.json();
+  },
+
+  async put<T>(path: string, body: any, token?: string): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`PUT ${path} failed: ${errText}`);
+    }
+
+    return res.json();
+  },
+
+  async delete<T>(path: string, token?: string): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`DELETE ${path} failed: ${errText}`);
+    }
+
+    return res.json();
+  },
+};

@@ -1,18 +1,31 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import http from "http";
+import { Server } from "socket.io";
 import app from "./app.js";
+import User from "./models/User.js";
 
 dotenv.config();
-
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI;
 
-mongoose.connect(MONGO_URI)
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
+
+  socket.on("updateStats", async () => {
+    const topUsers = await User.find().sort({ distance: -1 }).limit(10).select("username avatar distance");
+    io.emit("leaderboardUpdate", topUsers);
+  });
+
+  socket.on("disconnect", () => console.log("User disconnected:", socket.id));
+});
+
+mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log("✅ Connected to MongoDB Atlas");
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running at http://localhost:${PORT}`);
-    });
+    server.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
   })
   .catch(err => {
     console.error("❌ MongoDB connection error:", err.message);

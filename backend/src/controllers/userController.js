@@ -14,7 +14,7 @@ export const getProfile = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-  const allowedFields = ["username", "displayName", "avatar", "avatarUrl", "location", "bio"];
+    const allowedFields = ["username", "displayName", "avatar", "location", "bio"];
     const updates = {};
 
     for (let key of allowedFields) {
@@ -29,12 +29,6 @@ export const updateProfile = async (req, res) => {
       delete updates.location;
     }
 
-    // Map avatarUrl -> avatar if provided
-    if (updates.avatarUrl && !updates.avatar) {
-      updates.avatar = updates.avatarUrl;
-      delete updates.avatarUrl;
-    }
-
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { $set: updates },
@@ -47,6 +41,26 @@ export const updateProfile = async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 };
+
+// Add this in controllers/userController.js
+export const addBadge = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { badge } = req.body;
+
+    // Example: push badge into user's badges array
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $push: { badges: badge } },
+      { new: true }
+    );
+
+    res.json({ success: true, data: user.badges });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
 
 export const syncStats = async (req, res) => {
   try {

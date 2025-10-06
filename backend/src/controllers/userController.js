@@ -42,6 +42,26 @@ export const updateProfile = async (req, res) => {
   }
 };
 
+// Add this in controllers/userController.js
+export const addBadge = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { badge } = req.body;
+
+    // Example: push badge into user's badges array
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $push: { badges: badge } },
+      { new: true }
+    );
+
+    res.json({ success: true, data: user.badges });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+
 export const syncStats = async (req, res) => {
   try {
     const { steps, distance } = req.body;

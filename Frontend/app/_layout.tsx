@@ -19,6 +19,7 @@ function AppContent() {
         <Stack.Screen name="register" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="edit-profile" />
       </Stack>
       <StatusBar style={theme === 'dark' ? "light" : "dark"} />
     </View>

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, Link } from 'expo-router';
 import CustomInput from '../components/CustomInput';
-import { User } from '../lib/models/User';
 import { authService } from '../services/AuthService';
 
 export default function RegisterScreen() {
@@ -12,13 +11,37 @@ export default function RegisterScreen() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    const newUser = new User(lastName, username, email, mobile);
-    const result = await authService.register(newUser);
-    alert(result.message);
-    if (result.success) {
-      router.push('/login');
+    if (!username || !email || !password) {
+      Alert.alert('Validation', 'Username, email & password are required');
+      return;
+    }
+    try {
+      setLoading(true);
+      const payload = {
+        username,
+        email,
+        password,
+        lastName,
+        mobileNumber: mobile,
+      } as any;
+
+      const result = await authService.register(payload);
+
+      if (result.success) {
+        Alert.alert('✅ Registered', result.message || 'Account created successfully', [
+          { text: 'Continue', onPress: () => router.replace('/login') },
+        ]);
+      } else {
+        Alert.alert('❌ Error', result.message || 'Registration failed');
+      }
+    } catch (e: any) {
+      Alert.alert('❌ Error', e?.message || 'Unexpected error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -43,10 +66,15 @@ export default function RegisterScreen() {
       <CustomInput iconName="account-circle-outline" placeholder="Enter Username" value={username} onChangeText={setUsername} />
       <CustomInput iconName="email-outline" placeholder="Enter Email Id" value={email} onChangeText={setEmail} />
       <CustomInput iconName="phone-outline" placeholder="Mobile Number" value={mobile} onChangeText={setMobile} />
+      <CustomInput iconName="lock-outline" placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
 
-      <TouchableOpacity onPress={handleRegister} className="bg-primary-green rounded-xl p-4 mt-8 items-center">
-        <Text className="text-background-dark font-bold text-lg">NEXT</Text>
+      <TouchableOpacity onPress={handleRegister} disabled={loading} className="bg-primary-green rounded-xl p-4 mt-8 items-center">
+        {loading ? <ActivityIndicator color="#000" /> : <Text className="text-background-dark font-bold text-lg">NEXT</Text>}
       </TouchableOpacity>
+      <View className="flex-row justify-center mt-4">
+        <Text className="text-text-secondary">Already have an account? </Text>
+        <Link href="/login"><Text className="text-primary-green font-bold">Login</Text></Link>
+      </View>
     </SafeAreaView>
   );
 }

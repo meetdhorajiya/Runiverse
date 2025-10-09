@@ -1,0 +1,54 @@
+import { api } from "./api";
+import { authService } from "./AuthService";
+import { User } from "@/store/types";
+
+// Mock profile service for updating user profile information.
+// In a real application this would perform a network request.
+export const profileService = {
+   async updateUserProfile(
+      partial: Partial<User>
+   ): Promise<{ success: boolean; data?: Partial<User>; message?: string }> {
+      try {
+         const token = authService.getToken();
+         if (!token) throw new Error("Not authenticated");
+         const payload: any = {};
+         if (partial.username) payload.username = partial.username;
+         if (partial.avatarUrl) payload.avatarUrl = partial.avatarUrl;
+         const resp = await api.put<any>("/api/users/me", payload, token);
+         const mapped: Partial<User> = {
+            id: resp._id || resp.id,
+            username: resp.username,
+            avatarUrl: resp.avatar || resp.avatarUrl || null,
+            steps: resp.steps,
+            distance: resp.distance,
+            territories: resp.territories,
+         } as any;
+         return { success: true, data: mapped, message: "Profile updated" };
+      } catch (e: any) {
+         return { success: false, message: e.message };
+      }
+   },
+
+   async fetchMe(): Promise<{ success: boolean; data?: Partial<User>; message?: string }> {
+      try {
+         const token = authService.getToken();
+         if (!token) throw new Error("Not authenticated");
+         const resp = await api.get<any>("/api/users/me", token);
+         // Map backend avatar -> avatarUrl for frontend model
+         const mapped: Partial<User> = {
+            id: resp._id || resp.id,
+            username: resp.username,
+            avatarUrl: resp.avatar || null,
+            steps: resp.steps,
+            distance: resp.distance,
+            territories: resp.territories,
+            email: resp.email,
+         } as any;
+         return { success: true, data: mapped };
+      } catch (e: any) {
+         return { success: false, message: e.message };
+      }
+   },
+};
+
+export default profileService;

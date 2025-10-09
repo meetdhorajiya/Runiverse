@@ -1,11 +1,9 @@
-import { User } from '../lib/models/User';
+import { api } from './api';
 
-// This service class encapsulates all authentication-related logic.
-// Instead of having API calls scattered in the UI, we centralize them here.
-// This is an example of the Single Responsibility Principle.
+
 class AuthService {
-  // A singleton instance to ensure we only have one AuthService
   private static instance: AuthService;
+  private token: string | null = null;
 
   private constructor() {}
 
@@ -16,26 +14,101 @@ class AuthService {
     return AuthService.instance;
   }
 
-  async login(email: string, password: string): Promise<{ success: boolean; message: string }> {
-    console.log(`Attempting to log in with ${email}...`);
-    // In a real app, you would make an API call here.
-    // e.g., const response = await fetch('/api/login', ...);
-    return new Promise(resolve => setTimeout(() => resolve({ success: true, message: "Login successful!" }), 1000));
+  getToken(): string | null {
+    return this.token;
   }
 
-  async socialLogin(provider: 'google' | 'facebook' | 'apple'): Promise<{ success: boolean }> {
-    console.log(`Logging in with ${provider}...`);
-    // Logic for social sign-in using Expo's modules would go here.
-    return { success: true };
+  setToken(token: string | null): void {
+    this.token = token;
   }
 
-  async register(userData: User): Promise<{ success: boolean; message: string }> {
-    console.log(`Registering user: ${userData.username}`);
-    // API call to register the new user would go here.
-    // e.g., const response = await fetch('/api/register', { body: JSON.stringify(userData) });
-    return new Promise(resolve => setTimeout(() => resolve({ success: true, message: "Registration successful!" }), 1000));
+  // 🟢 LOGIN
+  async login(
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; message: string; user?: any; token?: string }> {
+    try {
+      const response = await api.post<any>('/api/auth/login', { email, password });
+
+      if (response?.token) {
+        this.setToken(response.token);
+        return {
+          success: true,
+          message: 'Login successful',
+          user: response.user,
+          token: response.token,
+        };
+      }
+
+      return { success: false, message: response?.message || 'Invalid credentials' };
+    } catch (error: any) {
+      console.error('Login error:', error);
+      return { success: false, message: error?.message || 'Login failed' };
+    }
+  }
+
+  // 🟣 REGISTER
+  async register(userData: {
+    username: string;
+    email: string;
+    password: string;
+  }): Promise<{ success: boolean; message: string; user?: any; token?: string }> {
+    try {
+      const response = await api.post<any>('/api/auth/register', userData);
+
+      if (response?.token) {
+        this.setToken(response.token);
+        return {
+          success: true,
+          message: 'Registration successful',
+          user: response.user,
+          token: response.token,
+        };
+      }
+
+      return { success: false, message: response?.message || 'Registration failed' };
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      return { success: false, message: error?.message || 'Registration failed' };
+    }
+  }
+
+  // 🟡 GOOGLE LOGIN
+  async googleLogin(): Promise<void> {
+    // On mobile, you’ll open the backend OAuth URL directly
+    const url = `${api.baseURL}/api/auth/google`;
+    // In a real app, use WebBrowser from Expo AuthSession:
+    // import * as WebBrowser from 'expo-web-browser';
+    // await WebBrowser.openBrowserAsync(url);
+    console.log('Redirect to Google OAuth:', url);
+  }
+
+  // 🟠 HANDLE GOOGLE CALLBACK (optional for dev mode)
+  async handleGoogleCallback(): Promise<{ success: boolean; message: string; user?: any; token?: string }> {
+    try {
+      const response = await api.get<any>('/api/auth/google/callback');
+
+      if (response?.token) {
+        this.setToken(response.token);
+        return {
+          success: true,
+          message: 'Google login successful',
+          user: response.user,
+          token: response.token,
+        };
+      }
+
+      return { success: false, message: 'Google login failed - no token received' };
+    } catch (error: any) {
+      console.error('Google callback error:', error);
+      return { success: false, message: error?.message || 'Google login failed' };
+    }
+  }
+
+  // 🔴 LOGOUT
+  logout() {
+    this.token = null;
   }
 }
 
-// Export the singleton instance for use across the app
 export const authService = AuthService.getInstance();

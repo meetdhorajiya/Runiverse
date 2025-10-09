@@ -1,8 +1,14 @@
 export interface User {
   id: string;
   username: string;
-  avatarUrl: string;
+  avatarUrl: string; // may be null from backend; keep string for now to simplify UI usage
   groupId: string | null;
+  // Extended fields aligned with backend
+  email?: string;
+  steps?: number;
+  distance?: number; // meters
+  territories?: number;
+  displayName?: string | null;
 }
 
 export interface Group {

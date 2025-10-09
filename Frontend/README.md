@@ -39,6 +39,29 @@ A mobile-first **fitness gamification platform** where users can **walk to claim
 
 ## 📂 Project Structure
 
+### Newly Added
+
+#### Edit Profile Feature
+An `edit-profile` screen was added allowing users to update their `username` and `avatarUrl`.
+
+Key pieces:
+ - `app/edit-profile.tsx`: Form UI with validation and loading state.
+ - `services/profileService.ts`: Mock async update method (simulates API latency).
+ - `store/useStore.ts`: New `updateUser` action merges partial changes into persisted user state.
+ - `app/(tabs)/profile.tsx`: Now consumes the store user and provides a button to navigate to edit screen.
+ - `app/_layout.tsx`: Stack updated to include the `edit-profile` route.
+
+Flow:
+1. User taps `Edit Profile` on Profile screen.
+2. Form pre-fills current username & avatar.
+3. On save: client validates username, calls mock service, updates Zustand store, shows success alert, and navigates back.
+
+Future improvements (suggested):
+ - Add backend integration.
+ - Allow photo picker upload (Expo ImagePicker) instead of raw URL.
+ - Add additional fields (bio, location, stats visibility toggle).
+ - Inline error display beneath inputs.
+
 ## 👥 Team Members
 
 - Divayang – Frontend (React Native, Mapbox, integration)

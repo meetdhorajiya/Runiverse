@@ -15,6 +15,8 @@ app.use(cookieParser());
 app.use(morgan("dev"));
 app.use(cors({ origin: ["http://localhost:19006", "exp://*"], credentials: true }));
 
+app.get("/favicon.ico", (_req, res) => res.status(204).end());
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/challenges", challengeRoutes);

@@ -2,6 +2,7 @@
 import { Pedometer } from "expo-sensors";
 import { useEffect, useRef, useState } from "react";
 import statsService from "./statsService";
+import { authService } from "./AuthService";
 
 const STRIDE_M = 0.78; // average stride length in meters
 const SYNC_STEP_THRESHOLD = 25;
@@ -40,6 +41,14 @@ export function usePedometer(): PedometerHook {
     const flushPending = async (force = false) => {
       if (cancelled) return;
 
+      const hasToken = !!authService.getToken();
+
+      if (!hasToken) {
+        pendingStepsRef.current = 0;
+        clearSyncTimeout();
+        return;
+      }
+
       if (!force && pendingStepsRef.current <= 0) {
         clearSyncTimeout();
         return;
@@ -63,18 +72,19 @@ export function usePedometer(): PedometerHook {
         });
         lastSyncRef.current = Date.now();
       } catch (err) {
-        console.log("stats sync failed:", err);
-        if (err instanceof Error && err.message === "Not authenticated") {
+        if (!(err instanceof Error && err.message === "Not authenticated")) {
+          console.log("stats sync failed:", err);
+          pendingStepsRef.current += stepsDelta;
+          scheduleSync();
+        } else {
           pendingStepsRef.current = 0;
-          return;
         }
-        pendingStepsRef.current += stepsDelta;
-        scheduleSync();
       }
     };
 
     const scheduleSync = () => {
       if (syncTimeoutRef.current || cancelled) return;
+      if (!authService.getToken()) return;
       syncTimeoutRef.current = setTimeout(() => {
         flushPending().catch((err) => console.log("delayed stats sync failed:", err));
       }, SYNC_INTERVAL_MS);

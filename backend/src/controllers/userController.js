@@ -6,6 +6,11 @@ export const getProfile = async (req, res) => {
       .select("-password")
       .populate("badges");
     if (!user) return res.status(404).json({ msg: "User not found" });
+
+    user.ensureDailyReset();
+    if (user.isModified()) {
+      await user.save();
+    }
     res.json(user);
   } catch (err) {
     res.status(500).json({ msg: "Server error" });
@@ -14,7 +19,7 @@ export const getProfile = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const allowedFields = ["username", "displayName", "avatar", "location", "bio"];
+  const allowedFields = ["username", "displayName", "avatar", "location", "bio", "city"];
     const updates = {};
 
     for (let key of allowedFields) {
@@ -73,8 +78,10 @@ export const syncStats = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ msg: "User not found" });
 
-    if (steps) await user.updateSteps(steps);
-    if (distance) await user.updateDistance(distance);
+    user.ensureDailyReset();
+
+    if (steps) user.updateSteps(Number(steps));
+    if (distance) user.updateDistance(Number(distance));
 
     await user.save();
 
@@ -84,6 +91,8 @@ export const syncStats = async (req, res) => {
         id: user._id,
         steps: user.steps,
         distance: user.distance,
+        lifetimeSteps: user.lifetimeSteps,
+        lifetimeDistance: user.lifetimeDistance,
         territories: user.territories,
       },
     });

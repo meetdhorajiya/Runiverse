@@ -22,6 +22,9 @@ export const profileService = {
             steps: resp.steps,
             distance: resp.distance,
             territories: resp.territories,
+            city: resp.city ?? null,
+            lifetimeSteps: resp.lifetimeSteps,
+            lifetimeDistance: resp.lifetimeDistance,
          } as any;
          return { success: true, data: mapped, message: "Profile updated" };
       } catch (e: any) {
@@ -43,6 +46,9 @@ export const profileService = {
             distance: resp.distance,
             territories: resp.territories,
             email: resp.email,
+            city: resp.city ?? null,
+            lifetimeSteps: resp.lifetimeSteps,
+            lifetimeDistance: resp.lifetimeDistance,
          } as any;
          return { success: true, data: mapped };
       } catch (e: any) {

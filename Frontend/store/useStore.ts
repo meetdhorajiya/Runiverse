@@ -69,6 +69,7 @@ export const useStore = create<
         username: "PlayerOne",
         avatarUrl: "https://i.pravatar.cc/150?u=user-1",
         groupId: "group-1",
+        city: "Gandhinagar",
       },
       group: mockGroups[0],
       setUser: (user) => set({ user }),

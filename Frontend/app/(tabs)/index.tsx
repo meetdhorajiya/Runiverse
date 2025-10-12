@@ -239,7 +239,7 @@ export default function Index() {
 
       async function initPedometer() {
          try {
-            // 🔒 Android 10+ runtime permission
+            // Android 10+ runtime permission
             if (Platform.OS === "android" && Platform.Version >= 29) {
                const granted = await PermissionsAndroid.request(
                   PermissionsAndroid.PERMISSIONS.ACTIVITY_RECOGNITION,
@@ -260,7 +260,7 @@ export default function Index() {
             setIsPedometerAvailable(available ? "yes" : "no");
             if (!available) return;
 
-            // 📊 Get last 24h history
+            // Get last 24h history
             const end = new Date();
             const start = new Date();
             start.setDate(end.getDate() - 1);
@@ -272,7 +272,7 @@ export default function Index() {
                setPast24hSteps(0);
             }
 
-            // 🔴 Subscribe to live updates
+            //  Subscribe to live updates
             subscription = Pedometer.watchStepCount((result) => {
                setCurrentStepCount(result.steps ?? 0);
             });
@@ -292,7 +292,7 @@ export default function Index() {
       };
    }, []);
 
-   // 🟢 Toggle start/stop walking session
+   // Toggle start/stop walking session
    const handleToggleWalk = () => {
       if (isActive) {
          setIsActive(false);
@@ -302,7 +302,7 @@ export default function Index() {
       }
    };
 
-   // 🧮 Active session relative steps
+   //  Active session relative steps
    const sessionSteps = currentStepCount - baseline;
    const displaySteps = isActive ? sessionSteps : past24hSteps;
 

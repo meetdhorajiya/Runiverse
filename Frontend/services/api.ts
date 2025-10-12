@@ -1,5 +1,5 @@
 // src/services/api.ts
-const BASE_URL = "http://10.32.97.244:5000"; // ⚠️ Replace with your local IP when testing on device
+const BASE_URL = "https://runiverse.vercel.app"; // ⚠️ Replace with your local IP when testing on device
 
 export const api = {
   baseURL: BASE_URL,

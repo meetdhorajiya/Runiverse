@@ -9,6 +9,7 @@ import {
    pathLengthMeters,
    polygonAreaMeters2,
 } from "@/utils/loopDetection";
+import { territoryService, TerritoryFeature } from "@/services/territoryService";
 
 Mapbox.setAccessToken(
    'pk.eyJ1IjoiaW1hZ2luZS14IiwiYSI6ImNtZXhnemd6ODAwZXIyanF0ZWhqM3BrM2IifQ.Leh68KuE8z7Lm70Ce60NLA'
@@ -31,13 +32,14 @@ const SMOOTHING_ALPHA = 0.25;
 export default function MapScreen() {
    const [location, setLocation] = useState<[number, number] | null>(null);
    const [route, setRoute] = useState<[number, number][]>([]);
-   const [territories, setTerritories] = useState<any[]>([]);
+   const [territories, setTerritories] = useState<TerritoryFeature[]>([]);
    const [showBuildings, setShowBuildings] = useState(true);
    const routeStartRef = useRef<number | null>(null);
    const cameraRef = useRef<Camera>(null);
    const watchRef = useRef<Location.LocationSubscription | null>(null);
    const prevAcceptedCoordRef = useRef<[number, number] | null>(null);
    const lastTimestampRef = useRef<number | null>(null);
+   const hasCenteredRef = useRef(false);
    const insets = useSafeAreaInsets();
 
    useEffect(() => {
@@ -82,27 +84,62 @@ export default function MapScreen() {
                const MIN_AREA = 100;
 
                if (area > MIN_AREA) {
-                  setTerritories((prevT) => [
-                     ...prevT,
-                     {
-                        type: "Feature",
-                        geometry: {
-                           type: "Polygon",
-                           coordinates: [[...newPath, newPath[0]]],
-                        },
-                        properties: {
-                           area,
-                           length: pathLengthMeters(newPath),
-                        },
+                  const closedPolygon = [...newPath, newPath[0]];
+                  const length = pathLengthMeters(newPath);
+                  const localId = `local-${Date.now()}`;
+                  const optimistic: TerritoryFeature = {
+                     type: "Feature",
+                     geometry: {
+                        type: "Polygon",
+                        coordinates: [closedPolygon],
                      },
-                  ]);
+                     properties: {
+                        area,
+                        length,
+                        localId,
+                     },
+                  };
+
+                  setTerritories((prevT) => [...prevT, optimistic]);
+
+                  territoryService
+                     .claimTerritory({
+                        name: `Territory ${new Date().toISOString()}`,
+                        coordinates: closedPolygon,
+                        area,
+                        length,
+                     })
+                     .then((saved) => {
+                        setTerritories((prevT) =>
+                           prevT.map((territory) =>
+                              territory.properties?.localId === localId ? saved : territory
+                           )
+                        );
+                     })
+                     .catch((error) => {
+                        console.warn("Territory save failed", error);
+                        setTerritories((prevT) =>
+                           prevT.filter((territory) => territory.properties?.localId !== localId)
+                        );
+                     });
                }
+
                routeStartRef.current = null;
                return [];
             }
 
             return newPath;
          });
+      };
+
+      const loadTerritories = async () => {
+         try {
+            const fetched = await territoryService.fetchTerritories();
+            if (!isMounted) return;
+            setTerritories(fetched);
+         } catch (error) {
+            console.warn("Failed to load territories", error);
+         }
       };
 
       const startTracking = async () => {
@@ -134,6 +171,7 @@ export default function MapScreen() {
       };
 
       startTracking();
+      loadTerritories();
 
       return () => {
          isMounted = false;
@@ -141,6 +179,23 @@ export default function MapScreen() {
          watchRef.current = null;
       };
    }, []);
+
+   useEffect(() => {
+      if (!location || !cameraRef.current) {
+         return;
+      }
+
+      if (!hasCenteredRef.current) {
+         cameraRef.current.setCamera({
+            centerCoordinate: location,
+            zoomLevel: 17,
+            pitch: 60,
+            heading: 0,
+            animationDuration: 800,
+         });
+         hasCenteredRef.current = true;
+      }
+   }, [location]);
    return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }} edges={['bottom', 'left', 'right']}>
          <StatusBar style="auto" />
@@ -228,25 +283,28 @@ export default function MapScreen() {
                   </ShapeSource>
                )}
                {/* Territories */}
-               {territories.map((territory, index) => (
-                  <ShapeSource key={`territory-${index}`} id={`territory-${index}`} shape={territory}>
-                     <FillLayer
-                        id={`territory-fill-${index}`}
-                        style={{
-                           fillColor: "rgba(255,0,0,0.4)",
-                           fillOutlineColor: "red",
-                        }}
-                     />
-                     <LineLayer
-                        id={`territory-line-${index}`}
-                        style={{
-                           lineColor: 'red',
-                           lineWidth: 3,
-                           lineOpacity: 0.9,
-                        }}
-                     />
-                  </ShapeSource>
-               ))}
+               {territories.map((territory, index) => {
+                  const featureKey = territory.properties?.id ?? territory.properties?.localId ?? index;
+                  return (
+                     <ShapeSource key={`territory-${featureKey}`} id={`territory-${featureKey}`} shape={territory}>
+                        <FillLayer
+                           id={`territory-fill-${featureKey}`}
+                           style={{
+                              fillColor: "rgba(255,0,0,0.4)",
+                              fillOutlineColor: "red",
+                           }}
+                        />
+                        <LineLayer
+                           id={`territory-line-${featureKey}`}
+                           style={{
+                              lineColor: 'red',
+                              lineWidth: 3,
+                              lineOpacity: 0.9,
+                           }}
+                        />
+                     </ShapeSource>
+                  );
+               })}
 
                {/* User */}
                <UserLocation

@@ -6,6 +6,52 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { useState, useEffect } from "react";
 import ReanimatedSplashScreen from '../components/ReanimatedSplashScreen';
+import { usePedometer } from "@/services/pedometerService";
+import profileService from "@/services/profileService";
+import { authService } from "@/services/AuthService";
+import { useStore } from "@/store/useStore";
+
+const STRIDE_M = 0.78;
+
+function ActivitySyncBridge() {
+  const { totalToday } = usePedometer();
+  const updateUser = useStore((s) => s.updateUser);
+  const setUser = useStore((s) => s.setUser);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrate = async () => {
+      if (!authService.getToken()) return;
+      try {
+        const result = await profileService.fetchMe();
+        if (!cancelled && result.success && result.data) {
+          const current = useStore.getState().user;
+          const merged = current ? { ...current, ...result.data } : (result.data as any);
+          setUser(merged as any);
+        }
+      } catch (err) {
+        console.log("profile hydrate failed:", err);
+      }
+    };
+
+    hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setUser]);
+
+  useEffect(() => {
+    if (!Number.isFinite(totalToday)) return;
+    updateUser({
+      steps: Math.round(totalToday),
+      distance: Math.round(totalToday * STRIDE_M * 100) / 100,
+    });
+  }, [totalToday, updateUser]);
+
+  return null;
+}
 
 // A separate component to handle the main app content
 function AppContent() {
@@ -13,6 +59,7 @@ function AppContent() {
   
   return (
     <View className={theme === 'dark' ? "flex-1 bg-background-dark" : "flex-1 bg-white"}>
+      <ActivitySyncBridge />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="login" />

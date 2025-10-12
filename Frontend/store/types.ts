@@ -9,6 +9,9 @@ export interface User {
   distance?: number; // meters
   territories?: number;
   displayName?: string | null;
+  city?: string | null;
+  lifetimeSteps?: number;
+  lifetimeDistance?: number;
 }
 
 export interface Group {

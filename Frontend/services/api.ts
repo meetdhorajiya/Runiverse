@@ -1,5 +1,19 @@
 // src/services/api.ts
-const BASE_URL = "https://runiverse.vercel.app"; // ⚠️ Replace with your local IP when testing on device
+import Constants from "expo-constants";
+
+const normalize = (value: string) => (value.endsWith("/") ? value.slice(0, -1) : value);
+
+const resolveBaseUrl = (): string => {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+  const configUrl = Constants.expoConfig?.extra?.apiUrl as string | undefined;
+
+  if (envUrl) return normalize(envUrl);
+  if (configUrl) return normalize(configUrl);
+
+  return "https://runiverse.vercel.app";
+};
+
+const BASE_URL = resolveBaseUrl();
 
 export const api = {
   baseURL: BASE_URL,

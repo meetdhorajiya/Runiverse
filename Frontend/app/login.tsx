@@ -6,19 +6,17 @@ import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { authService } from '../services/AuthService';
 import { useStore } from '@/store/useStore';
+import { profileService } from '@/services/profileService';
 
 const LoginScreen = () => {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const router = useRouter();
-  const setUser = useStore(s => s.setUser);
+  const setUser = useStore((s) => s.setUser);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Enable dev-only direct login via env flag
-  const ENABLE_DEV_LOGIN = process.env.EXPO_PUBLIC_ENABLE_DEV_LOGIN === 'true';
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -28,17 +26,38 @@ const LoginScreen = () => {
 
     setLoading(true);
 
-    if (__DEV__ && ENABLE_DEV_LOGIN && email === 'dev' && password === 'dev') {
-      return devDirectLogin();
-    }
-
     try {
       const result = await authService.login(email, password);
 
       if (result.success && result.token) {
+        let normalizedUser: any = null;
+
         if (result.user) {
-          setUser(result.user as any);
+          normalizedUser = {
+            ...result.user,
+            id: result.user._id || result.user.id,
+            avatarUrl: result.user.avatar || result.user.avatarUrl || null,
+          };
         }
+
+        try {
+          const me = await profileService.fetchMe();
+          if (me.success && me.data) {
+            normalizedUser = {
+              ...(normalizedUser || {}),
+              ...me.data,
+            };
+          } else if (!me.success && me.message) {
+            console.warn('Failed to hydrate user profile:', me.message);
+          }
+        } catch (profileError) {
+          console.warn('Profile fetch failed:', profileError);
+        }
+
+        if (normalizedUser) {
+          setUser(normalizedUser as any);
+        }
+
         Alert.alert('✅ Success', result.message || 'Logged in successfully');
         router.replace('/(tabs)');
       } else {
@@ -51,24 +70,12 @@ const LoginScreen = () => {
     }
   };
 
-  // Dev-only direct login helper
-  const devDirectLogin = async () => {
-    try {
-      setLoading(true);
-      Alert.alert('✅ Dev Login', 'Bypassing authentication for development.');
-      // Skip authentication entirely - backend under construction
-      router.replace('/(tabs)');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const bgClass = isDarkMode ? "bg-background-dark" : "bg-gray-100";
-  const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
-  const secondaryTextClass = isDarkMode ? "text-text-secondary" : "text-gray-500";
-  const inputBgClass = isDarkMode ? "bg-card-dark" : "bg-gray-200";
-  const inputTextClass = isDarkMode ? "text-white" : "text-black";
-  const iconColor = isDarkMode ? "white" : "black";
+  const bgClass = isDarkMode ? 'bg-background-dark' : 'bg-gray-100';
+  const textClass = isDarkMode ? 'text-text-primary' : 'text-gray-900';
+  const secondaryTextClass = isDarkMode ? 'text-text-secondary' : 'text-gray-500';
+  const inputBgClass = isDarkMode ? 'bg-card-dark' : 'bg-gray-200';
+  const inputTextClass = isDarkMode ? 'text-white' : 'text-black';
+  const iconColor = isDarkMode ? 'white' : 'black';
 
   return (
     <SafeAreaView className={`flex-1 ${bgClass}`}>
@@ -79,7 +86,7 @@ const LoginScreen = () => {
           </TouchableOpacity>
         </Link>
       </View>
-      
+
       <View className="flex-1 justify-center p-6">
         <Text className={`text-4xl font-bold mb-2 ${textClass}`}>Welcome Back!</Text>
         <Text className={`text-lg mb-8 ${secondaryTextClass}`}>Log in to continue your journey.</Text>
@@ -109,24 +116,13 @@ const LoginScreen = () => {
           />
         </View>
 
-        <TouchableOpacity 
-          onPress={handleLogin} 
+        <TouchableOpacity
+          onPress={handleLogin}
           disabled={loading}
           className="bg-primary-green p-4 rounded-xl items-center justify-center shadow-md"
         >
           {loading ? <ActivityIndicator color="#000" /> : <Text className="text-black text-lg font-bold">Log In</Text>}
         </TouchableOpacity>
-        
-
-        {__DEV__ && ENABLE_DEV_LOGIN && (
-          <TouchableOpacity
-            onPress={devDirectLogin}
-            disabled={loading}
-            className="bg-yellow-400 p-3 rounded-xl items-center justify-center shadow-sm mt-3"
-          >
-            <Text className="text-black font-semibold">Dev: Direct Login</Text>
-          </TouchableOpacity>
-        )}
 
         <View className="flex-row justify-center mt-6">
           <Text className={`text-base ${secondaryTextClass}`}>Don't have an account? </Text>

@@ -88,7 +88,7 @@ export default ({ config }) => {
                projectId: '5233a97b-f485-4172-a36c-db748f469175',
             },
             mapboxToken: process.env.MAPBOX_DOWNLOAD_TOKEN,
-            apiUrl:'https://runiverse.vercel.app',
+            apiUrl: 'https://runiverse.onrender.com',
          },
          owner: 'imagine_x',
       },

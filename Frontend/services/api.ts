@@ -13,7 +13,7 @@ const resolveBaseUrl = (): string => {
   return "https://runiverse.vercel.app";
 };
 
-const BASE_URL = resolveBaseUrl();
+const BASE_URL = "https://runiverse.onrender.com";
 
 export const api = {
   baseURL: BASE_URL,

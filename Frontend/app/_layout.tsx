@@ -9,6 +9,7 @@ import ReanimatedSplashScreen from '../components/ReanimatedSplashScreen';
 import { usePedometer } from "@/services/pedometerService";
 import profileService from "@/services/profileService";
 import { authService } from "@/services/AuthService";
+import { locationService } from "@/services/locationService";
 import { useStore } from "@/store/useStore";
 
 const STRIDE_M = 0.78;
@@ -50,6 +51,11 @@ function ActivitySyncBridge() {
     });
   }, [totalToday, updateUser]);
 
+  useEffect(() => {
+    locationService.startAutoSync();
+    return () => locationService.stopAutoSync();
+  }, []);
+
   return null;
 }
 
@@ -77,10 +83,26 @@ export default function RootLayout() {
   const [isAppReady, setIsAppReady] = useState(false);
 
   useEffect(() => {
-    // Show the animation for 2.5 seconds
-    setTimeout(() => {
-      setIsAppReady(true);
-    }, 2500);
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      try {
+        await Promise.all([
+          authService.hydrate().catch(() => undefined),
+          new Promise((resolve) => setTimeout(resolve, 2500)),
+        ]);
+      } finally {
+        if (!cancelled) {
+          setIsAppReady(true);
+        }
+      }
+    };
+
+    bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
   
   return (

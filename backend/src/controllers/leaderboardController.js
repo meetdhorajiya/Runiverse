@@ -1,10 +1,40 @@
 import User from "../models/User.js";
 import Territory from "../models/Territory.js";
 
+const GLOBAL_LIMIT = 50;
+const CITY_LIMIT = 25;
+
+const serializeGlobalLeaderboard = (users) =>
+  users.map((user, index) => ({
+    userId: user._id?.toString?.() ?? user._id,
+    username: user.username,
+    avatar: user.avatar ?? null,
+    city: user.city ?? null,
+    steps: user.steps ?? 0,
+    distance: user.distance ?? 0,
+    lifetimeSteps: user.lifetimeSteps ?? 0,
+    lifetimeDistance: user.lifetimeDistance ?? 0,
+    rank: index + 1,
+    totalArea: 0,
+    territoryCount: 0,
+  }));
+
+const fetchGlobalLeaderboard = async (limit = GLOBAL_LIMIT) => {
+  const users = await User.find()
+    .sort({ distance: -1, steps: -1, lifetimeDistance: -1 })
+    .limit(limit)
+    .select("username avatar distance steps city lifetimeSteps lifetimeDistance")
+    .lean();
+
+  return serializeGlobalLeaderboard(users ?? []);
+};
+
+const escapeForRegex = (input = "") => input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const getLeaderboard = async (req, res) => {
   try {
-    const topUsers = await User.find().sort({ distance: -1 }).limit(10).select("username avatar distance");
-    res.json({ success: true, data: topUsers });
+    const leaderboard = await fetchGlobalLeaderboard();
+    res.json({ success: true, data: leaderboard });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -12,22 +42,45 @@ export const getLeaderboard = async (req, res) => {
 
 export const getCityLeaderboard = async (req, res) => {
   try {
-    const city = req.query.city?.trim();
+    const rawCity = req.query.city?.trim();
 
-    if (!city) {
+    if (!rawCity) {
       return res.status(400).json({ success: false, message: "city query parameter is required" });
     }
 
-    const usersInCity = await User.find({ city })
-      .select("username avatar steps city territories")
+    const cityRegex = new RegExp(`^${escapeForRegex(rawCity)}$`, "i");
+
+    const usersInCity = await User.find({ city: cityRegex })
+      .select("username avatar steps city territories distance lifetimeSteps lifetimeDistance")
+      .limit(CITY_LIMIT)
       .lean();
 
-    if (usersInCity.length === 0) {
-      return res.json({ success: true, data: [] });
+    const normalizedUsers = [...(usersInCity ?? [])];
+
+    if (req.user && req.user.city && cityRegex.test(req.user.city)) {
+      const alreadyIncluded = normalizedUsers.some((candidate) => candidate._id?.toString?.() === req.user._id.toString());
+      if (!alreadyIncluded) {
+        normalizedUsers.push({
+          _id: req.user._id,
+          username: req.user.username,
+          avatar: req.user.avatar ?? null,
+          city: req.user.city ?? null,
+          steps: req.user.steps ?? 0,
+          territories: req.user.territories ?? 0,
+          distance: req.user.distance ?? 0,
+          lifetimeSteps: req.user.lifetimeSteps ?? 0,
+          lifetimeDistance: req.user.lifetimeDistance ?? 0,
+        });
+      }
+    }
+
+    if (normalizedUsers.length === 0) {
+      const fallback = await fetchGlobalLeaderboard(10);
+      return res.json({ success: true, data: fallback });
     }
 
     const territoryStats = await Territory.aggregate([
-      { $match: { owner: { $in: usersInCity.map((u) => u._id) } } },
+      { $match: { owner: { $in: normalizedUsers.map((u) => u._id) } } },
       {
         $group: {
           _id: "$owner",
@@ -45,22 +98,26 @@ export const getCityLeaderboard = async (req, res) => {
       return acc;
     }, {});
 
-    const leaderboard = usersInCity
+    const leaderboard = normalizedUsers
       .map((user) => {
-        const stat = statsMap[user._id.toString()] ?? { totalArea: 0, territoryCount: 0 };
+        const key = user._id?.toString?.() ?? user._id;
+        const stat = statsMap[key] ?? { totalArea: 0, territoryCount: 0 };
         return {
-          userId: user._id,
+          userId: key,
           username: user.username,
           avatar: user.avatar ?? null,
           city: user.city ?? null,
           steps: user.steps ?? 0,
+          distance: user.distance ?? 0,
+          lifetimeSteps: user.lifetimeSteps ?? 0,
+          lifetimeDistance: user.lifetimeDistance ?? 0,
           totalArea: stat.totalArea,
           territoryCount: stat.territoryCount,
         };
       })
       .sort((a, b) => {
-        if (b.totalArea !== a.totalArea) {
-          return b.totalArea - a.totalArea;
+        if ((b.totalArea ?? 0) !== (a.totalArea ?? 0)) {
+          return (b.totalArea ?? 0) - (a.totalArea ?? 0);
         }
         return (b.steps ?? 0) - (a.steps ?? 0);
       })

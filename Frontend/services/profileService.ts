@@ -14,6 +14,7 @@ export const profileService = {
          const payload: any = {};
          if (partial.username) payload.username = partial.username;
          if (partial.avatarUrl) payload.avatarUrl = partial.avatarUrl;
+         if (partial.city) payload.city = partial.city;
          const resp = await api.put<any>("/api/users/me", payload, token);
          const mapped: Partial<User> = {
             id: resp._id || resp.id,
@@ -30,6 +31,10 @@ export const profileService = {
       } catch (e: any) {
          return { success: false, message: e.message };
       }
+   },
+
+   async updateCity(city: string) {
+      return this.updateUserProfile({ city });
    },
 
    async fetchMe(): Promise<{ success: boolean; data?: Partial<User>; message?: string }> {

@@ -2,17 +2,23 @@ import User from "../models/User.js";
 
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
-      .select("-password")
-      .populate("badges");
-    if (!user) return res.status(404).json({ msg: "User not found" });
+    const baseUser = req.user && req.user._id ? req.user : await User.findById(req.user?.id || req.user?._id).select("-password");
 
-    user.ensureDailyReset();
-    if (user.isModified()) {
-      await user.save();
+    if (!baseUser) {
+      return res.status(404).json({ msg: "User not found" });
     }
-    res.json(user);
+
+    await baseUser.populate("badges");
+
+    baseUser.ensureDailyReset();
+
+    if (baseUser.isModified()) {
+      await baseUser.save();
+    }
+
+    res.json(baseUser);
   } catch (err) {
+    console.error("getProfile error:", err);
     res.status(500).json({ msg: "Server error" });
   }
 };
@@ -25,6 +31,14 @@ export const updateProfile = async (req, res) => {
     for (let key of allowedFields) {
       if (req.body[key] !== undefined) {
         updates[key] = req.body[key];
+      }
+    }
+
+    if (typeof updates.city === "string") {
+      const normalizedCity = updates.city.trim();
+      updates.city = normalizedCity.length > 0 ? normalizedCity : undefined;
+      if (!updates.city) {
+        delete updates.city;
       }
     }
 

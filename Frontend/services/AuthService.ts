@@ -1,9 +1,13 @@
-import { api } from './api';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { api } from "./api";
 
+const TOKEN_STORAGE_KEY = "runiverse.auth.token";
 
 class AuthService {
   private static instance: AuthService;
   private token: string | null = null;
+  private isHydrated = false;
+  private hydratePromise: Promise<void> | null = null;
 
   private constructor() {}
 
@@ -14,12 +18,39 @@ class AuthService {
     return AuthService.instance;
   }
 
-  getToken(): string | null {
-    return this.token;
+  private async persistToken(token: string | null): Promise<void> {
+    this.token = token;
+    try {
+      if (token) {
+        await AsyncStorage.setItem(TOKEN_STORAGE_KEY, token);
+      } else {
+        await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+      }
+    } catch (err) {
+      console.warn("Failed to persist auth token", err);
+    }
   }
 
-  setToken(token: string | null): void {
-    this.token = token;
+  async hydrate(): Promise<void> {
+    if (this.isHydrated) return;
+    if (!this.hydratePromise) {
+      this.hydratePromise = AsyncStorage.getItem(TOKEN_STORAGE_KEY)
+        .then((stored) => {
+          this.token = stored;
+        })
+        .catch((err) => {
+          console.warn("Unable to hydrate auth token", err);
+          this.token = null;
+        })
+        .finally(() => {
+          this.isHydrated = true;
+        });
+    }
+    await this.hydratePromise;
+  }
+
+  getToken(): string | null {
+    return this.token;
   }
 
   // 🟢 LOGIN
@@ -28,22 +59,22 @@ class AuthService {
     password: string
   ): Promise<{ success: boolean; message: string; user?: any; token?: string }> {
     try {
-      const response = await api.post<any>('/api/auth/login', { email, password });
+      const response = await api.post<any>("/api/auth/login", { email, password });
 
       if (response?.token) {
-        this.setToken(response.token);
+        await this.persistToken(response.token);
         return {
           success: true,
-          message: 'Login successful',
+          message: "Login successful",
           user: response.user,
           token: response.token,
         };
       }
 
-      return { success: false, message: response?.message || 'Invalid credentials' };
+      return { success: false, message: response?.message || "Invalid credentials" };
     } catch (error: any) {
-      console.error('Login error:', error);
-      return { success: false, message: error?.message || 'Login failed' };
+      console.error("Login error:", error);
+      return { success: false, message: error?.message || "Login failed" };
     }
   }
 
@@ -54,22 +85,22 @@ class AuthService {
     password: string;
   }): Promise<{ success: boolean; message: string; user?: any; token?: string }> {
     try {
-      const response = await api.post<any>('/api/auth/register', userData);
+      const response = await api.post<any>("/api/auth/register", userData);
 
       if (response?.token) {
-        this.setToken(response.token);
+        await this.persistToken(response.token);
         return {
           success: true,
-          message: 'Registration successful',
+          message: "Registration successful",
           user: response.user,
           token: response.token,
         };
       }
 
-      return { success: false, message: response?.message || 'Registration failed' };
+      return { success: false, message: response?.message || "Registration failed" };
     } catch (error: any) {
-      console.error('Registration error:', error);
-      return { success: false, message: error?.message || 'Registration failed' };
+      console.error("Registration error:", error);
+      return { success: false, message: error?.message || "Registration failed" };
     }
   }
 
@@ -80,7 +111,7 @@ class AuthService {
     // In a real app, use WebBrowser from Expo AuthSession:
     // import * as WebBrowser from 'expo-web-browser';
     // await WebBrowser.openBrowserAsync(url);
-    console.log('Redirect to Google OAuth:', url);
+    console.log("Redirect to Google OAuth:", url);
   }
 
   // 🟠 HANDLE GOOGLE CALLBACK (optional for dev mode)
@@ -89,7 +120,7 @@ class AuthService {
       const response = await api.get<any>('/api/auth/google/callback');
 
       if (response?.token) {
-        this.setToken(response.token);
+        await this.persistToken(response.token);
         return {
           success: true,
           message: 'Google login successful',
@@ -106,8 +137,8 @@ class AuthService {
   }
 
   // 🔴 LOGOUT
-  logout() {
-    this.token = null;
+  async logout() {
+    await this.persistToken(null);
   }
 }
 

@@ -20,7 +20,7 @@ import { mockGroups } from "@/services/leaderboardService";
 interface UserSlice {
   user: User | null;
   group: Group | null;
-  setUser: (user: User) => void;
+  setUser: (user: User | null) => void;
   joinGroup: (groupId: string) => void;
   updateUser: (partial: Partial<User>) => void;
 }

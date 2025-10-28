@@ -1,18 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Link } from 'expo-router';
 import CustomInput from '../components/CustomInput';
 import { authService } from '../services/AuthService';
+import { useStore } from '@/store/useStore';
+import profileService from '@/services/profileService';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const setUser = useStore((s) => s.setUser);
+  const user = useStore((s) => s.user);
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      router.replace('/(tabs)');
+    }
+  }, [user, router]);
 
   const handleRegister = async () => {
     if (!username || !email || !password) {
@@ -31,9 +42,36 @@ export default function RegisterScreen() {
 
       const result = await authService.register(payload);
 
-      if (result.success) {
-        Alert.alert('✅ Registered', result.message || 'Account created successfully', [
-          { text: 'Continue', onPress: () => router.replace('/login') },
+      if (result.success && result.token) {
+        // Auto-login after successful registration
+        let normalizedUser: any = null;
+
+        if (result.user) {
+          normalizedUser = {
+            ...result.user,
+            id: result.user._id || result.user.id,
+            avatarUrl: result.user.avatar || result.user.avatarUrl || null,
+          };
+        }
+
+        try {
+          const me = await profileService.fetchMe();
+          if (me.success && me.data) {
+            normalizedUser = {
+              ...(normalizedUser || {}),
+              ...me.data,
+            };
+          }
+        } catch (profileError) {
+          console.warn('Profile fetch failed:', profileError);
+        }
+
+        if (normalizedUser) {
+          setUser(normalizedUser as any);
+        }
+
+        Alert.alert('✅ Success', result.message || 'Account created successfully!', [
+          { text: 'Continue', onPress: () => router.replace('/(tabs)') },
         ]);
       } else {
         Alert.alert('❌ Error', result.message || 'Registration failed');

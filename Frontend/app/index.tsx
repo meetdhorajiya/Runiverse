@@ -1,11 +1,14 @@
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
+import { authService } from '@/services/AuthService';
+import { useStore } from '@/store/useStore';
+import profileService from '@/services/profileService';
 
 // Provide a fallback demo video URL if env not set. Replace with your own.
 const VIDEO_URL = process.env.EXPO_PUBLIC_WELCOME_VIDEO_URL || 'https://static-assets.mapbox.com/www/videos/mobile-maps-sdk/section_hero/video@720p.webm';
@@ -14,6 +17,53 @@ export default function WelcomeScreen() {
   const { theme } = useTheme();
   const isDarkMode = theme === 'dark';
   const videoRef = useRef<Video | null>(null);
+  const router = useRouter();
+  const setUser = useStore((s) => s.setUser);
+  const [isChecking, setIsChecking] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkAuth = async () => {
+      try {
+        await authService.hydrate();
+        const token = authService.getToken();
+
+        if (!cancelled && token) {
+          // Token exists, try to fetch user profile
+          const result = await profileService.fetchMe();
+          if (!cancelled && result.success && result.data) {
+            setUser(result.data as any);
+            router.replace('/(tabs)');
+            return;
+          }
+        }
+      } catch (err) {
+        console.log('Auto-login check failed:', err);
+      } finally {
+        if (!cancelled) {
+          setIsChecking(false);
+        }
+      }
+    };
+
+    checkAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, setUser]);
+
+  if (isChecking) {
+    return (
+      <SafeAreaView className={isDarkMode ? 'flex-1 bg-background-dark' : 'flex-1 bg-black'}>
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#00e0ff" />
+          <Text className="text-gray-400 mt-4">Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className={isDarkMode ? 'flex-1 bg-background-dark' : 'flex-1 bg-black'}>
@@ -60,11 +110,12 @@ export default function WelcomeScreen() {
               <View className="h-2 w-2 bg-neutral-500/60 rounded-full" />
               <View className="h-2 w-2 bg-neutral-500/40 rounded-full" />
             </View>
-            <Link href="/login" asChild>
-              <TouchableOpacity className="bg-primary-green h-16 w-16 rounded-full items-center justify-center shadow-lg shadow-black/40">
-                <FontAwesome name="arrow-right" size={24} color="black" />
-              </TouchableOpacity>
-            </Link>
+            <TouchableOpacity 
+              onPress={() => router.push('/login')}
+              className="bg-primary-green h-16 w-16 rounded-full items-center justify-center shadow-lg shadow-black/40"
+            >
+              <FontAwesome name="arrow-right" size={24} color="black" />
+            </TouchableOpacity>
           </View>
         </View>
       </View>

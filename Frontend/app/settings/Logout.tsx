@@ -1,11 +1,34 @@
 import React, { useState } from "react";
 import { Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import { useRouter } from "expo-router";
+import { authService } from "@/services/AuthService";
+import { useStore } from "@/store/useStore";
 
 export default function Logout() {
   const [rememberLogin, setRememberLogin] = useState(true);
+  const router = useRouter();
+  const setUser = useStore((s) => s.setUser);
 
   const handleLogout = () => {
-    Alert.alert("Logout", "You have been logged out securely.");
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: async () => {
+            await authService.logout();
+            setUser(null);
+            router.replace("/login");
+          }
+        }
+      ]
+    );
   };
 
   return (

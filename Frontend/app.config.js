@@ -78,6 +78,7 @@ export default ({ config }) => {
                      'Allow $(PRODUCT_NAME) to use your location while the app is running.',
                },
             ],
+            'expo-video',
          ],
          experiments: {
             typedRoutes: true,

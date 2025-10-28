@@ -9,6 +9,7 @@
     }
   },
   "include": [
+    "declarations.d.ts", "src",
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",

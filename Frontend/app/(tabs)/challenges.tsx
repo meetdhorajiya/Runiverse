@@ -7,7 +7,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 const ChallengeCard = ({ icon, title, description, reward, isDarkMode }: any) => {
     const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
     const secondaryTextClass = isDarkMode ? "text-text-secondary" : "text-gray-600";
-    const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white";
+    const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white"; 
     
     return (
         <View className={`rounded-xl p-6 mb-6 shadow-md ${cardBgClass}`}>

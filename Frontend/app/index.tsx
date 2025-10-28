@@ -11,7 +11,8 @@ import { useStore } from '@/store/useStore';
 import profileService from '@/services/profileService';
 
 // Provide a fallback demo video URL if env not set. Replace with your own.
-const VIDEO_URL = process.env.EXPO_PUBLIC_WELCOME_VIDEO_URL || 'https://static-assets.mapbox.com/www/videos/mobile-maps-sdk/section_hero/video@720p.webm';
+// const VIDEO_URL = process.env.EXPO_PUBLIC_WELCOME_VIDEO_URL || 'https://static-assets.mapbox.com/www/videos/mobile-maps-sdk/section_hero/video@720p.webm';
+const VIDEO_URL = 'https://drive.google.com/uc?export=download&id=1Z1CW9f6LJ3wJ8xJY4fdodDxTRvEAzjp7';
 
 export default function WelcomeScreen() {
   const { theme } = useTheme();

@@ -43,7 +43,7 @@ export default function TabLayout() {
         options={{
           title: 'Run',
           tabBarIcon: ({ color, size }) => (
-            // --- UPDATED MAP ICON ---
+            
             <MaterialCommunityIcons name="map-marker-distance" size={size} color={color} />
           ),
         }}
@@ -53,7 +53,7 @@ export default function TabLayout() {
         options={{
           title: 'Challenges',
           tabBarIcon: ({ color, size }) => (
-            // --- UPDATED CHALLENGES ICON ---
+            
             <MaterialCommunityIcons name="medal" size={size} color={color} />
           ),
         }}
@@ -63,7 +63,7 @@ export default function TabLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size }) => (
-            // --- UPDATED PROFILE ICON ---
+            
             <FontAwesome5 name="user-circle" size={size} color={color} />
           ),
         }}

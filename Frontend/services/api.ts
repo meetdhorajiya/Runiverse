@@ -6,14 +6,31 @@ const normalize = (value: string) => (value.endsWith("/") ? value.slice(0, -1) :
 const resolveBaseUrl = (): string => {
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
   const configUrl = Constants.expoConfig?.extra?.apiUrl as string | undefined;
-
   if (envUrl) return normalize(envUrl);
   if (configUrl) return normalize(configUrl);
-
   return "https://runiverse.vercel.app";
 };
 
-const BASE_URL = "https://runiverse.onrender.com";
+// You can swap this line to use `resolveBaseUrl()` later
+const BASE_URL = "http://10.76.173.33:5000";
+
+async function handleResponse<T>(res: Response, path: string): Promise<T> {
+  let data: any = null;
+  try {
+    // Some DELETE endpoints return no JSON
+    const text = await res.text();
+    data = text ? JSON.parse(text) : {};
+  } catch (err) {
+    console.warn(`⚠️ Failed to parse response from ${path}`);
+  }
+
+  if (!res.ok) {
+    const message = data?.message || res.statusText || "Unknown error";
+    throw new Error(`${res.status} ${path} → ${message}`);
+  }
+
+  return data as T;
+}
 
 export const api = {
   baseURL: BASE_URL,
@@ -26,49 +43,37 @@ export const api = {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`GET ${path} failed: ${errText}`);
-    }
-
-    return res.json();
+    return handleResponse<T>(res, path);
   },
 
   async post<T>(path: string, body: any, token?: string): Promise<T> {
+    const isFormData = body instanceof FormData;
+
     const res = await fetch(`${BASE_URL}${path}`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(body),
+      body: isFormData ? body : JSON.stringify(body),
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`POST ${path} failed: ${errText}`);
-    }
-
-    return res.json();
+    return handleResponse<T>(res, path);
   },
 
   async put<T>(path: string, body: any, token?: string): Promise<T> {
+    const isFormData = body instanceof FormData;
+
     const res = await fetch(`${BASE_URL}${path}`, {
       method: "PUT",
       headers: {
-        "Content-Type": "application/json",
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(body),
+      body: isFormData ? body : JSON.stringify(body),
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`PUT ${path} failed: ${errText}`);
-    }
-
-    return res.json();
+    return handleResponse<T>(res, path);
   },
 
   async delete<T>(path: string, token?: string): Promise<T> {
@@ -80,9 +85,20 @@ export const api = {
       },
     });
 
+    return handleResponse<T>(res, path);
+  },
+  async postForm<T>(path: string, body: FormData, token?: string): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body,
+    });
+
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`DELETE ${path} failed: ${errText}`);
+      throw new Error(`POST form ${path} failed: ${errText}`);
     }
 
     return res.json();

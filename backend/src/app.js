@@ -9,6 +9,7 @@ import leaderboardRoutes from "./routes/leaderboardRoutes.js";
 import territoryRoutes from "./routes/territoryRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import { notFound, errorHandler } from "./middlewares/errorMiddleware.js";
+import avatarRoutes from "./routes/avatarRoutes.js";
 
 const app = express();
 app.use(express.json());
@@ -28,6 +29,7 @@ app.use("/api/challenges", challengeRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/territories", territoryRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/avatar", avatarRoutes);
 console.log("📦 Task routes mounted at /api/tasks");
 app.get("/", (req, res) => res.json({ message: "Runiverse Backend running 🚀" }));
 

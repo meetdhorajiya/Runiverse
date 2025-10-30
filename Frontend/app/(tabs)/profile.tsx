@@ -7,6 +7,10 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { useStore } from '@/store/useStore';
 import { profileService } from '@/services/profileService';
 import { authService } from '@/services/AuthService';
+import * as ImagePicker from "expo-image-picker";
+import { avatarService } from "@/services/avatarService";
+import Toast from "react-native-toast-message";
+import { AvatarUploadResponse } from "@/store/types";
 
 const ProfileScreen = () => {
   const { theme } = useTheme();
@@ -49,6 +53,66 @@ const ProfileScreen = () => {
     [user?.distance, user?.lifetimeDistance, user?.lifetimeSteps, user?.steps, user?.territories]
   );
 
+  const handleAvatarUpload = async () => {
+    try {
+      const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!granted) {
+        Toast.show({
+          type: "error",
+          text1: "Permission denied",
+          text2: "Cannot access gallery",
+        });
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled) return;
+
+      setLoading(true);
+
+      const uploadRes = (await avatarService.uploadAvatar(result.assets[0].uri)) as AvatarUploadResponse;
+
+
+      if (uploadRes?.success && uploadRes.data?.avatarUrl) {
+        setUser({
+          id: user?.id ?? "",
+          username: user?.username ?? "Unknown",
+          avatarUrl: uploadRes.data?.avatarUrl ?? user?.avatarUrl ?? "",
+          groupId: user?.groupId ?? null,
+          email: user?.email,
+          steps: user?.steps,
+          distance: user?.distance,
+          territories: user?.territories,
+          displayName: user?.displayName,
+          city: user?.city,
+          lifetimeSteps: user?.lifetimeSteps,
+          lifetimeDistance: user?.lifetimeDistance,
+          token: user?.token,
+        });
+        Toast.show({ type: "success", text1: "Avatar updated!" });
+      } else {
+        Toast.show({
+          type: "error",
+          text1: uploadRes?.message || "Upload failed",
+        });
+      }
+    } catch (err: any) {
+      Toast.show({
+        type: "error",
+        text1: "Error uploading avatar",
+        text2: err.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
       if (!authService.getToken()) return; // not logged in yet
@@ -77,20 +141,17 @@ const ProfileScreen = () => {
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
         <View className="px-6 pt-6">
           <View className={`rounded-3xl p-6 mb-6 shadow-lg bg-gradient-to-br from-primary/95 to-emerald-500 dark:from-primary dark:to-emerald-600`}>
-            <View className="flex-row items-center">
+            <View className="relative">
               <Image
-                source={{ uri: user?.avatarUrl || 'https://i.pravatar.cc/150?u=placeholder' }}
+                source={{ uri: user?.avatarUrl || "https://i.pravatar.cc/150?u=placeholder" }}
                 className="w-24 h-24 rounded-full mr-4 border-2 border-white/80"
               />
-              <View className="flex-1">
-                <Text className="text-2xl font-bold text-white">{user?.username || 'Anonymous'}</Text>
-                <Text className="text-sm text-white/80">{user?.groupId ? 'Squad Explorer' : 'Solo Adventurer'}</Text>
-              </View>
-              <Link href="/settings" asChild>
-                <TouchableOpacity className="p-2 rounded-full bg-white/20">
-                  <Ionicons name="settings-outline" size={24} color="white" />
-                </TouchableOpacity>
-              </Link>
+              <TouchableOpacity
+                onPress={handleAvatarUpload}
+                className="absolute bottom-0 right-2 bg-white p-2 rounded-full"
+              >
+                <Ionicons name="camera" size={16} color="#00C853" />
+              </TouchableOpacity>
             </View>
             <Text className="mt-4 text-sm text-white/80">
               Every mile is a memory, every run a new discovery in the Runiverse.

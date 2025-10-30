@@ -1,12 +1,14 @@
-// At the top of Challenges.tsx (before your component)
-
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { useStore } from "@/store/useStore";
 import axios from 'axios';
+import ConfettiCannon from "react-native-confetti-cannon";
+import Toast from "react-native-toast-message";
+import { Animated } from "react-native";
+import { useProgressAnimation } from "@/hooks/useProgressAnimation";
 
 interface Task {
   _id: string;
@@ -18,28 +20,105 @@ interface Task {
   createdAt: string;
   expiresAt?: string;
 }
-const API_BASE_URL = "http://10.59.24.33:5000/api";
+const API_BASE_URL = "http://10.76.173.33:5000/api";
 
-const ChallengeCard = ({ icon, title, description, difficulty, type, target, isDarkMode }: any) => {
+const ChallengeCard = ({
+  icon,
+  title,
+  description,
+  difficulty,
+  type,
+  target,
+  isDarkMode,
+}: any) => {
+  const [joined, setJoined] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const confettiRef = useRef<any>(null);
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
   const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
   const secondaryTextClass = isDarkMode ? "text-text-secondary" : "text-gray-600";
   const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white";
 
+  const handleJoin = () => {
+    if (joined) return;
+    setJoined(true);
+    confettiRef.current?.start?.();
+    Toast.show({
+      type: "success",
+      text1: "Challenge Joined 🎯",
+      text2: "Let's crush it!",
+      position: "bottom",
+    });
+
+    Animated.timing(progressAnim, {
+      toValue: 100,
+      duration: 4000,
+      useNativeDriver: false,
+    }).start(() => {
+      setProgress(100);
+    });
+    const animatedWidth = progressAnim.interpolate({
+      inputRange: [0, 100],
+      outputRange: ["0%", "100%"],
+    });
+    
+  };
+
   return (
     <View className={`rounded-xl p-6 mb-6 shadow-md ${cardBgClass}`}>
       <View className="flex-row items-start">
-        <FontAwesome5 name={icon || "running"} size={28} color="#00C853" className="mr-4 mt-1" />
+        <FontAwesome5
+          name={icon || "running"}
+          size={28}
+          color="#00C853"
+          className="mr-4 mt-1"
+        />
         <View className="flex-1">
           <Text className={`text-xl font-bold ${textClass}`}>{title}</Text>
-          <Text className={`text-base mt-1 mb-2 ${secondaryTextClass}`}>{description}</Text>
+          <Text className={`text-base mt-1 mb-2 ${secondaryTextClass}`}>
+            {description}
+          </Text>
           <Text className={`text-sm mb-4 ${secondaryTextClass}`}>
             🎯 {target} km • ⚙️ {difficulty} • 🏃‍♂️ {type}
           </Text>
         </View>
       </View>
-      <TouchableOpacity className="bg-primary-green p-3 rounded-xl items-center">
-        <Text className="text-black text-base font-bold">Join Challenge</Text>
-      </TouchableOpacity>
+
+      {!joined ? (
+        <TouchableOpacity
+          className="bg-primary-green p-3 rounded-xl items-center"
+          onPress={handleJoin}
+        >
+          <Text className="text-black text-base font-bold">Join Challenge</Text>
+        </TouchableOpacity>
+      ) : (
+        <View>
+          <View className="h-4 bg-gray-300 rounded-xl overflow-hidden mt-3">
+            <Animated.View
+              style={{
+                width: progressAnim.interpolate({
+                  inputRange: [0, 100],
+                  outputRange: ["0%", "100%"],
+                }),
+                height: "100%",
+                backgroundColor: "#00C853",
+              }}
+            />
+          </View>
+          <Text className="mt-2 text-center text-gray-700">
+            {progress}% completed
+          </Text>
+        </View>
+      )}
+
+      <ConfettiCannon
+        ref={confettiRef}
+        count={40}
+        origin={{ x: 150, y: 0 }}
+        fadeOut
+        autoStart={false}
+      />
     </View>
   );
 };

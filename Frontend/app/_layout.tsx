@@ -11,6 +11,7 @@ import profileService from "@/services/profileService";
 import { authService } from "@/services/AuthService";
 import { locationService } from "@/services/locationService";
 import { useStore } from "@/store/useStore";
+import Toast from "react-native-toast-message";
 
 const STRIDE_M = 0.78;
 
@@ -62,18 +63,21 @@ function ActivitySyncBridge() {
 // A separate component to handle the main app content
 function AppContent() {
   const { theme } = useTheme();
-  
+
   return (
     <View className={theme === 'dark' ? "flex-1 bg-background-dark" : "flex-1 bg-white"}>
       <ActivitySyncBridge />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="register" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="settings" />
-        <Stack.Screen name="edit-profile" />
-      </Stack>
+      <>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="register" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="edit-profile" />
+        </Stack>
+        <Toast />
+      </>
       <StatusBar style={theme === 'dark' ? "light" : "dark"} />
     </View>
   );
@@ -104,7 +108,7 @@ export default function RootLayout() {
       cancelled = true;
     };
   }, []);
-  
+
   return (
     <SafeAreaProvider>
       <ThemeProvider>

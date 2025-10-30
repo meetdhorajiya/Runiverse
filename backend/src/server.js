@@ -6,6 +6,7 @@ import app from "./app.js";
 import User from "./models/User.js";
 import passport from "passport";
 import "./config/passport.js";
+import "./models/Badge.js";
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;

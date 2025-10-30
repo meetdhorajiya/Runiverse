@@ -25,12 +25,15 @@ export const getProfile = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-  const allowedFields = ["username", "displayName", "avatar", "location", "bio", "city"];
+    const allowedFields = ["username", "displayName", "avatar", "avatarUrl", "location", "bio", "city"];
     const updates = {};
 
     for (let key of allowedFields) {
       if (req.body[key] !== undefined) {
-        updates[key] = req.body[key];
+        updates[key] = req.body[key] === null ? "" : req.body[key];
+      }
+      if (updates.avatar === "" || updates.avatar === null) {
+        updates.avatar = null;
       }
     }
 
@@ -53,7 +56,7 @@ export const updateProfile = async (req, res) => {
       { $set: updates },
       { new: true, runValidators: true }
     ).select("-password");
-
+    console.log("User profile response:", user.avatarUrl);
     res.json(user);
   } catch (err) {
     console.error("Update error:", err);

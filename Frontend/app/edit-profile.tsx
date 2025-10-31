@@ -51,9 +51,23 @@ const EditProfileScreen = () => {
       }
    };
 
-   const removeImage = () => {
-      setPickedImage(null);
-      setAvatarUrl(user?.avatarUrl || '');
+   const removeImage = async () => {
+      try {
+         setLoading(true);
+         setPickedImage(null);
+         setAvatarUrl('');
+         const { success, data, message } = await profileService.updateUserProfile({ avatarUrl: null });
+         if (success && data) {
+            updateUser(data);
+            Alert.alert('Removed', 'Avatar removed successfully.');
+         } else {
+            Alert.alert('Error', message || 'Failed to remove avatar');
+         }
+      } catch (e: any) {
+         Alert.alert('Error', e.message || 'Unexpected error while removing avatar');
+      } finally {
+         setLoading(false);
+      }
    };
 
    const onSave = async () => {
@@ -96,7 +110,7 @@ const EditProfileScreen = () => {
                {/* Avatar Section */}
                <Text className={`text-base mb-2 ${textClass}`}>Avatar</Text>
                <View className="flex-row items-center mb-4">
-                  { (pickedImage || avatarUrl) ? (
+                  {(pickedImage || avatarUrl) ? (
                      <Image
                         source={{ uri: pickedImage || avatarUrl }}
                         className="w-20 h-20 rounded-full mr-4"
@@ -105,7 +119,7 @@ const EditProfileScreen = () => {
                      <View className="w-20 h-20 rounded-full mr-4 bg-gray-400 items-center justify-center">
                         <Ionicons name="person" size={36} color="#fff" />
                      </View>
-                  ) }
+                  )}
                   <View className="flex-1">
                      <TouchableOpacity
                         onPress={pickImage}
@@ -114,7 +128,7 @@ const EditProfileScreen = () => {
                      >
                         <Text className="text-white text-center font-medium">Choose Photo</Text>
                      </TouchableOpacity>
-                     { (pickedImage || avatarUrl) && (
+                     {(pickedImage || avatarUrl) && (
                         <TouchableOpacity
                            onPress={removeImage}
                            disabled={loading}
@@ -122,7 +136,7 @@ const EditProfileScreen = () => {
                         >
                            <Text className="text-white text-center font-medium">Remove</Text>
                         </TouchableOpacity>
-                     ) }
+                     )}
                   </View>
                </View>
 

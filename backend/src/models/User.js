@@ -20,13 +20,15 @@ const userSchema = new mongoose.Schema({
   oauthProvider: { type: String },
   oauthId: { type: String, index: true },
   displayName: { type: String },
-  avatar: { type: String },
+  avatarUrl: { type: String, default: "" },             
+  avatarPublicId: { type: String, default: "" },        
+  avatarProvider: { type: String, default: "cloudinary" },
 }, { timestamps: true });
 
 userSchema.index({ location: "2dsphere" });
 
 // Stat update methods
-userSchema.methods.ensureDailyReset = function(referenceDate = new Date()) {
+userSchema.methods.ensureDailyReset = function (referenceDate = new Date()) {
   const startOfDay = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
   if (!this.dailyResetAt || this.dailyResetAt < startOfDay) {
     this.steps = 0;
@@ -35,7 +37,7 @@ userSchema.methods.ensureDailyReset = function(referenceDate = new Date()) {
   }
 };
 
-userSchema.methods.updateSteps = function(newSteps, referenceDate = new Date()) {
+userSchema.methods.updateSteps = function (newSteps, referenceDate = new Date()) {
   if (!Number.isFinite(newSteps) || newSteps <= 0) {
     return this;
   }
@@ -45,7 +47,7 @@ userSchema.methods.updateSteps = function(newSteps, referenceDate = new Date()) 
   return this;
 };
 
-userSchema.methods.updateDistance = function(newDistance, referenceDate = new Date()) {
+userSchema.methods.updateDistance = function (newDistance, referenceDate = new Date()) {
   if (!Number.isFinite(newDistance) || newDistance <= 0) {
     return this;
   }
@@ -54,9 +56,22 @@ userSchema.methods.updateDistance = function(newDistance, referenceDate = new Da
   this.lifetimeDistance += newDistance;
   return this;
 };
-userSchema.methods.addTerritory = function() { this.territories += 1; return this.save(); };
-userSchema.methods.updateStreak = function() { this.streak += 1; this.multiplier = 1 + this.streak * 0.1; return this.save(); };
-userSchema.methods.resetStreak = function() { this.streak = 0; this.multiplier = 1; return this.save(); };
-userSchema.methods.updateLocation = function(lng, lat) { this.location = { type: "Point", coordinates: [lng, lat] }; return this.save(); };
+userSchema.methods.addTerritory = function () { this.territories += 1; return this.save(); };
+userSchema.methods.updateStreak = function () { this.streak += 1; this.multiplier = 1 + this.streak * 0.1; return this.save(); };
+userSchema.methods.resetStreak = function () { this.streak = 0; this.multiplier = 1; return this.save(); };
+userSchema.methods.updateLocation = function (lng, lat) { this.location = { type: "Point", coordinates: [lng, lat] }; return this.save(); };
 
+userSchema.methods.setAvatar = function (url, publicId, provider = "cloudinary") {
+  this.avatarUrl = url;
+  this.avatarPublicId = publicId;
+  this.avatarProvider = provider;
+  return this.save();
+};
+
+userSchema.methods.clearAvatar = function () {
+  this.avatarUrl = "";
+  this.avatarPublicId = "";
+  this.avatarProvider = "cloudinary";
+  return this.save();
+};
 export default mongoose.model("User", userSchema);

@@ -5,10 +5,10 @@ import { FontAwesome } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef, useEffect, useState } from 'react';
-import { authService } from '@/services/AuthService';
-import { useStore } from '@/store/useStore';
-import profileService from '@/services/profileService';
+import React, { useRef } from 'react';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect } from "react";
+import axios from "axios";
 
 // Provide a fallback demo video URL if env not set. Replace with your own.
 // const VIDEO_URL = process.env.EXPO_PUBLIC_WELCOME_VIDEO_URL || 'https://static-assets.mapbox.com/www/videos/mobile-maps-sdk/section_hero/video@720p.webm';
@@ -19,52 +19,23 @@ export default function WelcomeScreen() {
   const isDarkMode = theme === 'dark';
   const videoRef = useRef<Video | null>(null);
   const router = useRouter();
-  const setUser = useStore((s) => s.setUser);
-  const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-
     const checkAuth = async () => {
       try {
-        await authService.hydrate();
-        const token = authService.getToken();
-
-        if (!cancelled && token) {
-          // Token exists, try to fetch user profile
-          const result = await profileService.fetchMe();
-          if (!cancelled && result.success && result.data) {
-            setUser(result.data as any);
-            router.replace('/(tabs)');
-            return;
-          }
+        const token = await AsyncStorage.getItem("token");
+        if (token) {
+          // ✅ Set axios header globally
+          axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+          // ✅ Redirect user straight to main app
+          router.replace("/(tabs)");
         }
       } catch (err) {
-        console.log('Auto-login check failed:', err);
-      } finally {
-        if (!cancelled) {
-          setIsChecking(false);
-        }
+        console.warn("Auth check failed:", err);
       }
     };
-
     checkAuth();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router, setUser]);
-
-  if (isChecking) {
-    return (
-      <SafeAreaView className={isDarkMode ? 'flex-1 bg-background-dark' : 'flex-1 bg-black'}>
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#00e0ff" />
-          <Text className="text-gray-400 mt-4">Loading...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  }, []);
 
   return (
     <SafeAreaView className={isDarkMode ? 'flex-1 bg-background-dark' : 'flex-1 bg-black'}>
@@ -83,8 +54,8 @@ export default function WelcomeScreen() {
 
         {/* Darken + vignette overlays */}
         <LinearGradient
-          colors={[ 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.40)', 'rgba(0,0,0,1)' ]}
-          locations={[0,0.55,1]}
+          colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.40)', 'rgba(0,0,0,1)']}
+          locations={[0, 0.55, 1]}
           style={StyleSheet.absoluteFill}
         />
         <View pointerEvents='none' style={styles.vignette} />

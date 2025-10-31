@@ -107,6 +107,7 @@ export const territoryService = {
   },
 
   async claimTerritory(input: ClaimTerritoryInput): Promise<TerritoryFeature> {
+    await authService.hydrate();
     const token = authService.getToken() || undefined;
     const payload = {
       name: input.name,

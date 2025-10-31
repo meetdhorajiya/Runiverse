@@ -1,6 +1,6 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { View } from "react-native";
+import { LogBox, View } from "react-native";
 import "./global.css";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
@@ -13,6 +13,13 @@ import { locationService } from "@/services/locationService";
 import { useStore } from "@/store/useStore";
 
 const STRIDE_M = 0.78;
+
+LogBox.ignoreLogs([
+  "You are setting the style",
+  "Mapbox [error] ViewTagResolver",
+]);
+
+type StoreState = ReturnType<typeof useStore>;
 
 function ActivitySyncBridge() {
   const { totalToday } = usePedometer();

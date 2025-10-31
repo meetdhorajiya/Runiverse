@@ -1,15 +1,26 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Mapbox, { Camera, MapView, UserLocation, ShapeSource, LineLayer, FillLayer, FillExtrusionLayer, VectorSource } from '@rnmapbox/maps';
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
+import { authService } from "@/services/AuthService";
 import {
    isClosedLoop,
    pathLengthMeters,
    polygonAreaMeters2,
 } from "@/utils/loopDetection";
 import { territoryService, TerritoryFeature } from "@/services/territoryService";
+
+type LocalRouteSnapshot = {
+   date: string;
+   route: [number, number][];
+   startedAt: number | null;
+};
+
+const ROUTE_STORAGE_KEY = "runiverse:map:last-route";
 
 Mapbox.setAccessToken(
    'pk.eyJ1IjoiaW1hZ2luZS14IiwiYSI6ImNtZXhnemd6ODAwZXIyanF0ZWhqM3BrM2IifQ.Leh68KuE8z7Lm70Ce60NLA'
@@ -35,6 +46,7 @@ export default function MapScreen() {
    const [territories, setTerritories] = useState<TerritoryFeature[]>([]);
    const [showBuildings, setShowBuildings] = useState(true);
    const routeStartRef = useRef<number | null>(null);
+   const routeRef = useRef<[number, number][]>([]);
    const cameraRef = useRef<Camera>(null);
    const watchRef = useRef<Location.LocationSubscription | null>(null);
    const prevAcceptedCoordRef = useRef<[number, number] | null>(null);
@@ -42,10 +54,102 @@ export default function MapScreen() {
    const hasCenteredRef = useRef(false);
    const insets = useSafeAreaInsets();
 
-   useEffect(() => {
-      let isMounted = true;
+   const persistRoute = useCallback(async (coords: [number, number][]) => {
+      try {
+         if (!coords.length) {
+            await AsyncStorage.removeItem(ROUTE_STORAGE_KEY);
+            return;
+         }
 
-      const handleLocationUpdate = (loc: Location.LocationObject) => {
+         const snapshot: LocalRouteSnapshot = {
+            date: new Date().toISOString().slice(0, 10),
+            route: coords,
+            startedAt: routeStartRef.current ?? Date.now(),
+         };
+
+         await AsyncStorage.setItem(ROUTE_STORAGE_KEY, JSON.stringify(snapshot));
+      } catch (error) {
+         console.warn("Failed to persist route", error);
+      }
+   }, []);
+
+   const hydrateRoute = useCallback(async () => {
+      try {
+         const stored = await AsyncStorage.getItem(ROUTE_STORAGE_KEY);
+         if (!stored) {
+            return;
+         }
+
+         const parsed: LocalRouteSnapshot = JSON.parse(stored);
+         const todayKey = new Date().toISOString().slice(0, 10);
+
+         if (parsed.date !== todayKey || !Array.isArray(parsed.route)) {
+            await AsyncStorage.removeItem(ROUTE_STORAGE_KEY);
+            return;
+         }
+
+         routeRef.current = parsed.route;
+         routeStartRef.current = typeof parsed.startedAt === "number" ? parsed.startedAt : Date.now();
+         setRoute(parsed.route);
+      } catch (error) {
+         console.warn("Failed to hydrate saved route", error);
+      }
+   }, []);
+
+   const loadTerritories = useCallback(async () => {
+      try {
+         const fetched = await territoryService.fetchTerritories();
+         setTerritories(fetched);
+      } catch (error) {
+         console.warn("Failed to load territories", error);
+      }
+   }, []);
+
+   const submitTerritory = useCallback(
+      (closedPolygon: [number, number][], area: number, length: number) => {
+         const localId = `local-${Date.now()}`;
+         const optimistic: TerritoryFeature = {
+            type: "Feature",
+            geometry: {
+               type: "Polygon",
+               coordinates: [closedPolygon],
+            },
+            properties: {
+               localId,
+               area,
+               length,
+               claimedOn: new Date().toISOString(),
+            },
+         };
+
+         setTerritories((prevT) => [...prevT, optimistic]);
+
+         territoryService
+            .claimTerritory({
+               name: `Territory ${new Date().toISOString()}`,
+               coordinates: closedPolygon,
+               area,
+               length,
+            })
+            .then((saved) => {
+               setTerritories((prevT) =>
+                  prevT.map((territory) =>
+                     territory.properties?.localId === localId ? saved : territory
+                  )
+               );
+            })
+            .catch((error) => {
+               console.warn("Territory save failed", error);
+               setTerritories((prevT) =>
+                  prevT.filter((territory) => territory.properties?.localId !== localId)
+               );
+            });
+      },
+      []
+   );
+
+   const handleLocationUpdate = useCallback(
+      (loc: Location.LocationObject) => {
          const { accuracy } = loc.coords;
          const speed = loc.coords.speed ?? 0;
 
@@ -64,16 +168,20 @@ export default function MapScreen() {
          prevAcceptedCoordRef.current = smoothedCoord;
          setLocation(smoothedCoord);
 
+         let nextRoute: [number, number][] | null = null;
+
          setRoute((prev) => {
             if (prev.length === 0) {
                routeStartRef.current = Date.now();
-               return [smoothedCoord];
+               nextRoute = [smoothedCoord];
+               return nextRoute;
             }
 
             const lastCoord = prev[prev.length - 1];
             const distToLast = distance(lastCoord, smoothedCoord);
 
             if (distToLast < MIN_DISTANCE_DELTA_METERS && speed < MIN_SPEED_MS) {
+               nextRoute = prev;
                return prev;
             }
 
@@ -86,61 +194,35 @@ export default function MapScreen() {
                if (area > MIN_AREA) {
                   const closedPolygon = [...newPath, newPath[0]];
                   const length = pathLengthMeters(newPath);
-                  const localId = `local-${Date.now()}`;
-                  const optimistic: TerritoryFeature = {
-                     type: "Feature",
-                     geometry: {
-                        type: "Polygon",
-                        coordinates: [closedPolygon],
-                     },
-                     properties: {
-                        area,
-                        length,
-                        localId,
-                     },
-                  };
-
-                  setTerritories((prevT) => [...prevT, optimistic]);
-
-                  territoryService
-                     .claimTerritory({
-                        name: `Territory ${new Date().toISOString()}`,
-                        coordinates: closedPolygon,
-                        area,
-                        length,
-                     })
-                     .then((saved) => {
-                        setTerritories((prevT) =>
-                           prevT.map((territory) =>
-                              territory.properties?.localId === localId ? saved : territory
-                           )
-                        );
-                     })
-                     .catch((error) => {
-                        console.warn("Territory save failed", error);
-                        setTerritories((prevT) =>
-                           prevT.filter((territory) => territory.properties?.localId !== localId)
-                        );
-                     });
+                  submitTerritory(closedPolygon, area, length);
                }
 
                routeStartRef.current = null;
+               nextRoute = [];
                return [];
             }
 
+            nextRoute = newPath;
             return newPath;
          });
-      };
 
-      const loadTerritories = async () => {
-         try {
-            const fetched = await territoryService.fetchTerritories();
-            if (!isMounted) return;
-            setTerritories(fetched);
-         } catch (error) {
-            console.warn("Failed to load territories", error);
+         if (nextRoute !== null) {
+            const hasChanged = nextRoute !== routeRef.current;
+            routeRef.current = nextRoute;
+            if (hasChanged) {
+               persistRoute(nextRoute);
+            }
          }
-      };
+      },
+      [persistRoute, submitTerritory]
+   );
+
+   useEffect(() => {
+      routeRef.current = route;
+   }, [route]);
+
+   useEffect(() => {
+      let isMounted = true;
 
       const startTracking = async () => {
          const { status } = await Location.requestForegroundPermissionsAsync();
@@ -170,6 +252,8 @@ export default function MapScreen() {
          );
       };
 
+   authService.hydrate().catch(() => undefined);
+   hydrateRoute();
       startTracking();
       loadTerritories();
 
@@ -177,8 +261,18 @@ export default function MapScreen() {
          isMounted = false;
          watchRef.current?.remove();
          watchRef.current = null;
+         void persistRoute(routeRef.current);
       };
-   }, []);
+   }, [handleLocationUpdate, hydrateRoute, loadTerritories, persistRoute]);
+
+   useFocusEffect(
+      useCallback(() => {
+         loadTerritories();
+         return () => {
+            void persistRoute(routeRef.current);
+         };
+      }, [loadTerritories, persistRoute])
+   );
 
    useEffect(() => {
       if (!location || !cameraRef.current) {

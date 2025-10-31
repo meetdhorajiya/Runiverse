@@ -4,13 +4,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { useStore } from "@/store/useStore";
-import { leaderboardService, CityLeaderboardEntry } from "@/services/leaderboardService";
+import { leaderboardService, LeaderboardEntry } from "@/services/leaderboardService";
 
 const LeaderboardScreen = () => {
   const { theme } = useTheme();
   const user = useStore((s) => s.user);
   const isDarkMode = theme === "dark";
-  const [entries, setEntries] = useState<CityLeaderboardEntry[]>([]);
+  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +63,7 @@ const LeaderboardScreen = () => {
   const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
   const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white";
 
-  const renderItem = ({ item, index }: { item: CityLeaderboardEntry; index: number }) => {
+  const renderItem = ({ item, index }: { item: LeaderboardEntry; index: number }) => {
     const rank = index + 1;
     let rankColor = isDarkMode ? "text-gray-400" : "text-gray-600";
     if (rank === 1) rankColor = "text-yellow-400";

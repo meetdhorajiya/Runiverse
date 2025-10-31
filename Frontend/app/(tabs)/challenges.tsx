@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { FontAwesome5 } from "@expo/vector-icons";
@@ -7,8 +7,9 @@ import { useStore } from "@/store/useStore";
 import axios from 'axios';
 import ConfettiCannon from "react-native-confetti-cannon";
 import Toast from "react-native-toast-message";
-import { Animated } from "react-native";
+import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useProgressAnimation } from "@/hooks/useProgressAnimation";
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface Task {
   _id: string;
@@ -30,15 +31,26 @@ const ChallengeCard = ({
   type,
   target,
   isDarkMode,
+  index = 0,
 }: any) => {
   const [joined, setJoined] = useState(false);
   const [progress, setProgress] = useState(0);
   const confettiRef = useRef<any>(null);
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  const progressWidth = useSharedValue(0);
 
   const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
   const secondaryTextClass = isDarkMode ? "text-text-secondary" : "text-gray-600";
   const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white";
+
+  const difficultyColors: Record<string, string> = {
+    easy: '#00C853',
+    medium: '#FFA500',
+    hard: '#DC143C',
+  };
+
+  const progressBarStyle = useAnimatedStyle(() => ({
+    width: `${progressWidth.value}%`,
+  }));
 
   const handleJoin = () => {
     if (joined) return;
@@ -51,62 +63,59 @@ const ChallengeCard = ({
       position: "bottom",
     });
 
-    Animated.timing(progressAnim, {
-      toValue: 100,
-      duration: 4000,
-      useNativeDriver: false,
-    }).start(() => {
+    progressWidth.value = withTiming(100, { duration: 4000 }, () => {
       setProgress(100);
     });
-    const animatedWidth = progressAnim.interpolate({
-      inputRange: [0, 100],
-      outputRange: ["0%", "100%"],
-    });
-    
   };
 
   return (
-    <View className={`rounded-xl p-6 mb-6 shadow-md ${cardBgClass}`}>
-      <View className="flex-row items-start">
-        <FontAwesome5
-          name={icon || "running"}
-          size={28}
-          color="#00C853"
-          className="mr-4 mt-1"
-        />
+    <Animated.View 
+      entering={FadeInDown.duration(600).delay(index * 100)}
+      className={`rounded-3xl p-6 mb-5 shadow-lg ${cardBgClass} border border-gray-200/50 dark:border-gray-700/50`}
+    >
+      <View className="flex-row items-start mb-4">
+        <View className="bg-primary/10 dark:bg-primary/20 p-4 rounded-2xl mr-4">
+          <FontAwesome5
+            name={icon || "running"}
+            size={28}
+            color="#00C853"
+          />
+        </View>
         <View className="flex-1">
-          <Text className={`text-xl font-bold ${textClass}`}>{title}</Text>
-          <Text className={`text-base mt-1 mb-2 ${secondaryTextClass}`}>
+          <Text className={`text-xl font-bold ${textClass} tracking-tight`}>{title}</Text>
+          <Text className={`text-base mt-2 mb-3 ${secondaryTextClass} leading-relaxed`}>
             {description}
           </Text>
-          <Text className={`text-sm mb-4 ${secondaryTextClass}`}>
-            🎯 {target} km • ⚙️ {difficulty} • 🏃‍♂️ {type}
-          </Text>
+          <View className="flex-row items-center flex-wrap gap-2">
+            <View className="bg-blue-100 dark:bg-blue-900/30 px-3 py-1.5 rounded-full">
+              <Text className="text-xs font-semibold text-blue-700 dark:text-blue-300">🎯 {target} km</Text>
+            </View>
+            <View className={`px-3 py-1.5 rounded-full`} style={{ backgroundColor: difficultyColors[difficulty] + '20' }}>
+              <Text className="text-xs font-semibold" style={{ color: difficultyColors[difficulty] }}>⚙️ {difficulty.toUpperCase()}</Text>
+            </View>
+            <View className="bg-purple-100 dark:bg-purple-900/30 px-3 py-1.5 rounded-full">
+              <Text className="text-xs font-semibold text-purple-700 dark:text-purple-300">🏃‍♂️ {type.toUpperCase()}</Text>
+            </View>
+          </View>
         </View>
       </View>
 
       {!joined ? (
-        <TouchableOpacity
-          className="bg-primary-green p-3 rounded-xl items-center"
+        <Pressable
+          className="bg-primary-green p-4 rounded-2xl items-center shadow-lg shadow-primary-green/20 active:scale-98"
           onPress={handleJoin}
+          style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
         >
-          <Text className="text-black text-base font-bold">Join Challenge</Text>
-        </TouchableOpacity>
+          <Text className="text-black text-base font-bold tracking-wide">Join Challenge</Text>
+        </Pressable>
       ) : (
         <View>
-          <View className="h-4 bg-gray-300 rounded-xl overflow-hidden mt-3">
+          <View className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mt-3">
             <Animated.View
-              style={{
-                width: progressAnim.interpolate({
-                  inputRange: [0, 100],
-                  outputRange: ["0%", "100%"],
-                }),
-                height: "100%",
-                backgroundColor: "#00C853",
-              }}
+              style={[progressBarStyle, { height: "100%", backgroundColor: "#00C853" }]}
             />
           </View>
-          <Text className="mt-2 text-center text-gray-700">
+          <Text className={`mt-2 text-center ${secondaryTextClass} font-medium`}>
             {progress}% completed
           </Text>
         </View>
@@ -114,12 +123,12 @@ const ChallengeCard = ({
 
       <ConfettiCannon
         ref={confettiRef}
-        count={40}
+        count={50}
         origin={{ x: 150, y: 0 }}
         fadeOut
         autoStart={false}
       />
-    </View>
+    </Animated.View>
   );
 };
 
@@ -186,30 +195,47 @@ const ChallengesScreen = () => {
 
   return (
     <SafeAreaView className={`flex-1 ${bgClass}`}>
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
-        <View className="mb-6">
-          <Text className={`text-3xl font-bold mb-2 ${textClass}`}>Challenges</Text>
-          <Text className={`text-base mb-4 ${textClass}`}>Earn badges, stay consistent & keep running!</Text>
+      <ScrollView contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false}>
+        <Animated.View entering={FadeInDown.duration(600).delay(100)} className="mb-6">
+          <Text className={`text-4xl font-bold mb-3 ${textClass} tracking-tight`}>Challenges</Text>
+          <Text className={`text-base mb-6 ${textClass} leading-relaxed opacity-80`}>Earn badges, stay consistent & keep running!</Text>
 
-          <TouchableOpacity
+          <Pressable
             onPress={generateAITask}
             disabled={loading}
-            className="bg-green-500 py-3 px-4 rounded-xl items-center mb-6"
+            className="overflow-hidden rounded-2xl shadow-xl shadow-primary-green/20 active:scale-98"
+            style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
           >
-            <Text className="text-black text-base font-bold">
-              {loading ? "Generating..." : "Generate AI Challenge 🤖"}
-            </Text>
-          </TouchableOpacity>
-        </View>
+            <LinearGradient
+              colors={['#00C853', '#00A843']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              className="py-4 px-6 flex-row items-center justify-center"
+            >
+              <Text className="text-black text-base font-bold mr-2">
+                {loading ? "Generating..." : "Generate AI Challenge"}
+              </Text>
+              <Text className="text-2xl">🤖</Text>
+            </LinearGradient>
+          </Pressable>
+        </Animated.View>
 
         {loading && tasks.length === 0 ? (
-          <ActivityIndicator size="large" color="#00C853" />
+          <View className="items-center justify-center py-20">
+            <ActivityIndicator size="large" color="#00C853" />
+            <Text className={`mt-4 ${textClass} opacity-70`}>Loading challenges...</Text>
+          </View>
         ) : tasks.length === 0 ? (
-          <Text className={`text-center mt-10 ${textClass}`}>No challenges yet! Generate one.</Text>
+          <Animated.View entering={FadeInDown.duration(600).delay(200)} className="items-center justify-center py-20">
+            <Text className="text-6xl mb-4">🎯</Text>
+            <Text className={`text-center text-xl font-semibold ${textClass}`}>No challenges yet!</Text>
+            <Text className={`text-center mt-2 ${textClass} opacity-70`}>Generate one to get started.</Text>
+          </Animated.View>
         ) : (
-          tasks.map((task: any) => (
+          tasks.map((task: any, idx: number) => (
             <ChallengeCard
               key={task._id}
+              index={idx}
               icon={task.type === "run" ? "running" : "walking"}
               title={task.type.charAt(0).toUpperCase() + task.type.slice(1) + " Challenge"}
               description={task.description}

@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import React, { useRef } from 'react';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect } from "react";
 import axios from "axios";
+import Animated, { FadeInDown, FadeInUp, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 
 // Provide a fallback demo video URL if env not set. Replace with your own.
 // const VIDEO_URL = process.env.EXPO_PUBLIC_WELCOME_VIDEO_URL || 'https://static-assets.mapbox.com/www/videos/mobile-maps-sdk/section_hero/video@720p.webm';
@@ -62,33 +63,41 @@ export default function WelcomeScreen() {
 
         {/* Content */}
         <View className="flex-1 p-6 justify-end">
-          <View className="mb-12" style={{ gap: 14 }}>
-            <Text className="text-4xl font-bold text-gray-300 leading-tight">
+          <Animated.View 
+            entering={FadeInUp.duration(800).delay(200)}
+            className="mb-12" 
+            style={{ gap: 14 }}
+          >
+            <Text className="text-5xl font-bold text-white leading-tight tracking-tight">
               Run. Conquer.
               {"\n"}Own Your World.
             </Text>
-            <Text className="text-base text-gray-400">
+            <Text className="text-lg text-gray-300 leading-relaxed">
               Transform every step into progress. Capture territory, climb leaderboards and grow stronger with the community that runs the Runiverse.
             </Text>
-            <Text className="text-xs uppercase tracking-widest text-gray-500">
+            <Text className="text-xs uppercase tracking-widest text-gray-400 font-medium">
               Seamless tracking • Territory strategy • Social motivation
             </Text>
-          </View>
+          </Animated.View>
 
           {/* Progress indicators + CTA */}
-          <View className="flex-row justify-between items-center mb-2">
+          <Animated.View 
+            entering={FadeInDown.duration(600).delay(400)}
+            className="flex-row justify-between items-center mb-2"
+          >
             <View className="flex-row items-center" style={{ gap: 6 }}>
-              <View className="h-2 w-6 bg-primary-green rounded-full" />
-              <View className="h-2 w-2 bg-neutral-500/60 rounded-full" />
-              <View className="h-2 w-2 bg-neutral-500/40 rounded-full" />
+              <View className="h-2 w-8 bg-primary-green rounded-full shadow-sm shadow-primary-green/50" />
+              <View className="h-2 w-2 bg-neutral-400/50 rounded-full" />
+              <View className="h-2 w-2 bg-neutral-400/30 rounded-full" />
             </View>
-            <TouchableOpacity 
+            <Pressable 
               onPress={() => router.push('/login')}
-              className="bg-primary-green h-16 w-16 rounded-full items-center justify-center shadow-lg shadow-black/40"
+              className="bg-primary-green h-16 w-16 rounded-full items-center justify-center shadow-xl shadow-primary-green/40 active:scale-95"
+              style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] }]}
             >
-              <FontAwesome name="arrow-right" size={24} color="black" />
-            </TouchableOpacity>
-          </View>
+              <FontAwesome name="arrow-right" size={26} color="black" />
+            </Pressable>
+          </Animated.View>
         </View>
       </View>
     </SafeAreaView>

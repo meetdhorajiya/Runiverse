@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, useRouter } from 'expo-router';
 import { useTheme } from '../context/ThemeContext';
@@ -9,6 +9,7 @@ import { useStore } from '@/store/useStore';
 import { profileService } from '@/services/profileService';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 
 const LoginScreen = () => {
@@ -103,55 +104,68 @@ const LoginScreen = () => {
     <SafeAreaView className={`flex-1 ${bgClass}`}>
       <View className="px-6 py-4">
         <Link href="/" asChild>
-          <TouchableOpacity className="p-2 self-start" disabled={loading}>
+          <Pressable 
+            className="p-2 self-start rounded-full active:bg-gray-200 dark:active:bg-gray-800" 
+            disabled={loading}
+            style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+          >
             <Ionicons name="arrow-back" size={28} color={iconColor} />
-          </TouchableOpacity>
+          </Pressable>
         </Link>
       </View>
 
       <View className="flex-1 justify-center p-6">
-        <Text className={`text-4xl font-bold mb-2 ${textClass}`}>Welcome Back!</Text>
-        <Text className={`text-lg mb-8 ${secondaryTextClass}`}>Log in to continue your journey.</Text>
+        <Animated.View entering={FadeInUp.duration(600).delay(100)}>
+          <Text className={`text-5xl font-bold mb-3 ${textClass} tracking-tight`}>Welcome Back!</Text>
+          <Text className={`text-lg mb-10 ${secondaryTextClass} leading-relaxed`}>Log in to continue your journey.</Text>
+        </Animated.View>
 
-        <View className={`rounded-xl mb-4 ${inputBgClass}`}>
+        <Animated.View entering={FadeInDown.duration(600).delay(200)} className={`rounded-2xl mb-4 ${inputBgClass} shadow-sm`}>
           <TextInput
             placeholder="Email Address"
-            placeholderTextColor={isDarkMode ? '#A9A9A9' : '#6B7280'}
-            className={`p-4 text-base ${inputTextClass}`}
+            placeholderTextColor={isDarkMode ? '#9CA3AF' : '#6B7280'}
+            className={`p-5 text-base ${inputTextClass}`}
             keyboardType="email-address"
             autoCapitalize="none"
             value={email}
             onChangeText={setEmail}
             editable={!loading}
           />
-        </View>
+        </Animated.View>
 
-        <View className={`rounded-xl mb-6 ${inputBgClass}`}>
+        <Animated.View entering={FadeInDown.duration(600).delay(300)} className={`rounded-2xl mb-8 ${inputBgClass} shadow-sm`}>
           <TextInput
             placeholder="Password"
-            placeholderTextColor={isDarkMode ? '#A9A9A9' : '#6B7280'}
-            className={`p-4 text-base ${inputTextClass}`}
+            placeholderTextColor={isDarkMode ? '#9CA3AF' : '#6B7280'}
+            className={`p-5 text-base ${inputTextClass}`}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
             editable={!loading}
           />
-        </View>
+        </Animated.View>
 
-        <TouchableOpacity
-          onPress={handleLogin}
-          disabled={loading}
-          className="bg-primary-green p-4 rounded-xl items-center justify-center shadow-md"
-        >
-          {loading ? <ActivityIndicator color="#000" /> : <Text className="text-black text-lg font-bold">Log In</Text>}
-        </TouchableOpacity>
+        <Animated.View entering={FadeInDown.duration(600).delay(400)}>
+          <Pressable
+            onPress={handleLogin}
+            disabled={loading}
+            className="bg-primary-green p-5 rounded-2xl items-center justify-center shadow-lg shadow-primary-green/30 active:scale-98"
+            style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+          >
+            {loading ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text className="text-black text-lg font-bold tracking-wide">Log In</Text>
+            )}
+          </Pressable>
 
-        <View className="flex-row justify-center mt-6">
-          <Text className={`text-base ${secondaryTextClass}`}>Don't have an account? </Text>
-          <Link href="/register">
-            <Text className="text-primary-green font-bold text-base">Sign Up</Text>
-          </Link>
-        </View>
+          <View className="flex-row justify-center mt-8">
+            <Text className={`text-base ${secondaryTextClass}`}>Don't have an account? </Text>
+            <Link href="/register">
+              <Text className="text-primary-green font-bold text-base">Sign Up</Text>
+            </Link>
+          </View>
+        </Animated.View>
       </View>
     </SafeAreaView>
   );

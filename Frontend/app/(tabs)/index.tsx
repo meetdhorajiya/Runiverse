@@ -1,6 +1,6 @@
 // Index.tsx
 import { useState, useEffect, useRef } from "react";
-import { Platform, PermissionsAndroid, ScrollView, Animated } from "react-native";
+import { Platform, PermissionsAndroid, Dimensions } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Pedometer } from "expo-sensors";
@@ -8,6 +8,20 @@ import { StyledPressable, StyledText, StyledView } from "@/components/Styled";
 import { StatCard } from "@/components/StatCard";
 import { Footprints, MapPin, Flame } from "lucide-react-native";
 import { useStore } from "@/store/useStore";
+import Animated, { 
+   FadeInDown, 
+   FadeInUp, 
+   useAnimatedStyle, 
+   useSharedValue, 
+   withSpring, 
+   withTiming, 
+   interpolate,
+   useAnimatedScrollHandler,
+   Extrapolate,
+   runOnJS
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 
 // rough estimations
 const formatDistance = (steps: number) => (steps * 0.0008).toFixed(2); // ~0.8m/step
@@ -58,39 +72,74 @@ const snapshotDelayMs = 300;
 
 const getDayKey = (date: Date) => date.toISOString().split("T")[0];
 
+const HEADER_HEIGHT = 280;
+const STICKY_HEADER_HEIGHT = 70;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 export default function Index() {
    const user = useStore((s) => s.user);
    const [isPedometerAvailable, setIsPedometerAvailable] = useState<
       "checking" | "yes" | "no"
    >("checking");
 
-   const [initialTodaySteps, setInitialTodaySteps] = useState(0);    // Steps from midnight until app launch
-   const [liveStepCount, setLiveStepCount] = useState(0);            // Raw data from the sensor listener
-   const [totalTodaySteps, setTotalTodaySteps] = useState(0);      // The main value to display (initial + live)
+   const [initialTodaySteps, setInitialTodaySteps] = useState(0);
+   const [liveStepCount, setLiveStepCount] = useState(0);
+   const [totalTodaySteps, setTotalTodaySteps] = useState(0);
    const [dailyCalories, setDailyCalories] = useState<DailyCaloriesEntry[]>([]);
    const [hourlyCalories, setHourlyCalories] = useState<HourlyCaloriesEntry[]>([]);
    const [isCaloriesExpanded, setIsCaloriesExpanded] = useState(false);
-   const expandAnim = useRef(new Animated.Value(0)).current;
+   const expandProgress = useSharedValue(0);
    const [hasHydratedSnapshot, setHasHydratedSnapshot] = useState(false);
    const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
    const totalStepsRef = useRef(0);
    const latestSnapshotRef = useRef<TodayMetricsSnapshot | null>(null);
 
-   const [isActive, setIsActive] = useState(false);                  // session toggle
-   const [baseline, setBaseline] = useState(0);                      // for session reset
+   const [isActive, setIsActive] = useState(false);
+   const [baseline, setBaseline] = useState(0);
 
    const lastReadingRef = useRef(0);
+   
+   // Scroll animation values
+   const scrollY = useSharedValue(0);
+   const [isHeaderSticky, setIsHeaderSticky] = useState(false);
+   
+   // Animated border pulse effect
+   const borderPulse = useSharedValue(0);
+   
+   useEffect(() => {
+      // Continuous pulsing animation for borders
+      const animateBorder = () => {
+         borderPulse.value = withTiming(1, { duration: 1500 }, () => {
+            borderPulse.value = withTiming(0, { duration: 1500 });
+         });
+      };
+      
+      animateBorder();
+      const interval = setInterval(animateBorder, 3000);
+      
+      return () => clearInterval(interval);
+   }, []);
+
+   const scrollHandler = useAnimatedScrollHandler({
+      onScroll: (event) => {
+         scrollY.value = event.contentOffset.y;
+         
+         // Trigger sticky state at threshold
+         if (event.contentOffset.y > HEADER_HEIGHT - STICKY_HEADER_HEIGHT) {
+            if (!isHeaderSticky) {
+               runOnJS(setIsHeaderSticky)(true);
+            }
+         } else {
+            if (isHeaderSticky) {
+               runOnJS(setIsHeaderSticky)(false);
+            }
+         }
+      },
+   });
 
    useEffect(() => {
-      if (isCaloriesExpanded) {
-         expandAnim.setValue(0);
-         Animated.timing(expandAnim, {
-            toValue: 1,
-            duration: 220,
-            useNativeDriver: true,
-         }).start();
-      }
-   }, [expandAnim, isCaloriesExpanded]);
+      expandProgress.value = withTiming(isCaloriesExpanded ? 1 : 0, { duration: 300 });
+   }, [isCaloriesExpanded, expandProgress]);
 
    useEffect(() => {
       // Restore the last known readings so dev reloads do not wipe today's totals
@@ -423,72 +472,267 @@ export default function Index() {
       : 0;
    const chartHeight = 120; // Fixed height for the chart container
 
+   const expandedStyle = useAnimatedStyle(() => {
+      const opacity = interpolate(expandProgress.value, [0, 1], [0, 1]);
+      const translateY = interpolate(expandProgress.value, [0, 1], [-20, 0]);
+      
+      return {
+         opacity,
+         transform: [{ translateY }],
+      };
+   });
+
+   // Animated styles for sticky header
+   const stickyHeaderStyle = useAnimatedStyle(() => {
+      const translateY = interpolate(
+         scrollY.value,
+         [0, HEADER_HEIGHT - STICKY_HEADER_HEIGHT],
+         [HEADER_HEIGHT, 0],
+         Extrapolate.CLAMP
+      );
+
+      const opacity = interpolate(
+         scrollY.value,
+         [HEADER_HEIGHT - STICKY_HEADER_HEIGHT - 50, HEADER_HEIGHT - STICKY_HEADER_HEIGHT],
+         [0, 1],
+         Extrapolate.CLAMP
+      );
+
+      return {
+         transform: [{ translateY }],
+         opacity,
+      };
+   });
+
+   // Animated styles for main stats cards
+   const statsCardsStyle = useAnimatedStyle(() => {
+      const scale = interpolate(
+         scrollY.value,
+         [0, HEADER_HEIGHT - STICKY_HEADER_HEIGHT],
+         [1, 0.7],
+         Extrapolate.CLAMP
+      );
+
+      const translateY = interpolate(
+         scrollY.value,
+         [0, HEADER_HEIGHT - STICKY_HEADER_HEIGHT],
+         [0, -50],
+         Extrapolate.CLAMP
+      );
+
+      const opacity = interpolate(
+         scrollY.value,
+         [0, HEADER_HEIGHT - STICKY_HEADER_HEIGHT - 50, HEADER_HEIGHT - STICKY_HEADER_HEIGHT],
+         [1, 0.5, 0],
+         Extrapolate.CLAMP
+      );
+
+      return {
+         transform: [{ scale }, { translateY }],
+         opacity,
+      };
+   });
+
    return (
       <SafeAreaView className="flex-1 bg-background-light dark:bg-background-dark">
-         <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-            <StyledView className="px-6 pt-6">
-               <StyledView className="rounded-3xl p-6 bg-gradient-to-br from-primary/90 to-emerald-500 dark:from-primary dark:to-emerald-600 shadow-lg">
-                  <StyledText className="text-xs uppercase tracking-widest text-white/80">
-                     {isPedometerAvailable === "yes" ? "Daily Snapshot" : "Sensor Unavailable"}
-                  </StyledText>
-                  <StyledText className="mt-2 text-3xl font-bold text-white">
-                     {user?.username ? `Welcome back, ${user.username}!` : "Welcome back!"}
-                  </StyledText>
-                  <StyledText className="mt-1 text-sm text-white/80">
-                     {isPedometerAvailable === "yes"
-                        ? "Keep moving—every step powers your Runiverse legend."
-                        : "We couldn't access step data. Check permissions to stay in sync."}
-                  </StyledText>
-                  <StyledView className="mt-6 flex-row justify-between">
-                     <StyledView>
-                        <StyledText className="text-white/70 text-xs">Steps today</StyledText>
-                        <StyledText className="text-2xl font-semibold text-white">{totalTodaySteps}</StyledText>
+         {/* Sticky Header - Compact Stats Bar */}
+         <Animated.View 
+            style={[stickyHeaderStyle, { 
+               position: 'absolute', 
+               top: 0, 
+               left: 0, 
+               right: 0, 
+               zIndex: 100,
+               height: STICKY_HEADER_HEIGHT 
+            }]}
+            pointerEvents={isHeaderSticky ? 'auto' : 'none'}
+         >
+            <BlurView intensity={80} tint="default" className="flex-1">
+               <LinearGradient
+                  colors={['rgba(106, 90, 205, 0.95)', 'rgba(0, 200, 83, 0.95)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  className="flex-1 px-4 py-3 flex-row items-center justify-around border-b border-white/10"
+               >
+                  {/* Compact Step Count */}
+                  <StyledView className="flex-row items-center">
+                     <StyledView className="bg-white/20 p-2 rounded-xl mr-2">
+                        <Footprints size={18} color="#fff" strokeWidth={2.5} />
                      </StyledView>
-                     <StyledView className="items-end">
-                        <StyledText className="text-white/70 text-xs">Lifetime steps</StyledText>
-                        <StyledText className="text-2xl font-semibold text-white">{user?.lifetimeSteps ?? 0}</StyledText>
+                     <StyledView>
+                        <StyledText className="text-white/70 text-[10px] uppercase tracking-wide">Steps</StyledText>
+                        <StyledText className="text-white text-base font-bold">{totalTodaySteps}</StyledText>
                      </StyledView>
                   </StyledView>
-               </StyledView>
 
-               <StyledView className="mt-6 flex-row space-x-4">
-                  <StatCard icon={Footprints} label="Steps" value={totalTodaySteps.toString()} />
-                  <StatCard icon={MapPin} label="Distance" value={`${formatDistance(totalTodaySteps)} km`} />
-                  <StatCard icon={Flame} label="Calories" value={estimateCalories(totalTodaySteps).toString()} />
-               </StyledView>
+                  {/* Compact Distance */}
+                  <StyledView className="flex-row items-center">
+                     <StyledView className="bg-white/20 p-2 rounded-xl mr-2">
+                        <MapPin size={18} color="#fff" strokeWidth={2.5} />
+                     </StyledView>
+                     <StyledView>
+                        <StyledText className="text-white/70 text-[10px] uppercase tracking-wide">Distance</StyledText>
+                        <StyledText className="text-white text-base font-bold">{formatDistance(totalTodaySteps)} km</StyledText>
+                     </StyledView>
+                  </StyledView>
 
-               <StyledView className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-md">
+                  {/* Compact Calories */}
+                  <StyledView className="flex-row items-center">
+                     <StyledView className="bg-white/20 p-2 rounded-xl mr-2">
+                        <Flame size={18} color="#fff" strokeWidth={2.5} />
+                     </StyledView>
+                     <StyledView>
+                        <StyledText className="text-white/70 text-[10px] uppercase tracking-wide">Calories</StyledText>
+                        <StyledText className="text-white text-base font-bold">{estimateCalories(totalTodaySteps)}</StyledText>
+                     </StyledView>
+                  </StyledView>
+               </LinearGradient>
+            </BlurView>
+         </Animated.View>
+
+         <Animated.ScrollView 
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
+            contentContainerStyle={{ paddingBottom: 24 }} 
+            showsVerticalScrollIndicator={false}
+         >
+            <StyledView className="px-6 pt-6">
+               <Animated.View entering={FadeInUp.duration(600).delay(100)}>
+                  <StyledView className="rounded-3xl shadow-2xl" style={{ 
+                     shadowColor: '#6A5ACD',
+                     shadowOffset: { width: 0, height: 8 },
+                     shadowOpacity: 0.3,
+                     shadowRadius: 16,
+                     elevation: 12,
+                  }}>
+                     <LinearGradient
+                        colors={['#6A5ACD', '#7B68EE', '#00C853']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        className="rounded-3xl p-6 overflow-hidden"
+                     >
+                        {/* Content */}
+                        <StyledView style={{ position: 'relative', zIndex: 1 }}>
+                           <StyledView className="flex-row items-center mb-2">
+                              <StyledView className="w-1 h-4 bg-white rounded-full mr-2" />
+                              <StyledText className="text-xs uppercase tracking-widest text-white/90 font-bold">
+                                 {isPedometerAvailable === "yes" ? "Daily Snapshot" : "Sensor Unavailable"}
+                              </StyledText>
+                           </StyledView>
+                           
+                           <StyledText className="mt-1 text-5xl font-black text-white tracking-tight leading-tight" style={{
+                              textShadowColor: 'rgba(0, 0, 0, 0.3)',
+                              textShadowOffset: { width: 0, height: 2 },
+                              textShadowRadius: 8,
+                           }}>
+                              {user?.username ? `Hey, ${user.username}!` : "Welcome!"}
+                           </StyledText>
+                           
+                           <StyledText className="mt-3 text-base text-white/95 leading-relaxed font-medium">
+                              {isPedometerAvailable === "yes"
+                                 ? "Every step brings you closer to your legend. Keep crushing it! 💪"
+                                 : "We couldn't access step data. Check permissions to stay in sync."}
+                           </StyledText>
+                           
+                           <StyledView className="mt-8 flex-row justify-between items-center">
+                              {/* Steps Today Card */}
+                              <StyledView className="bg-white/15 backdrop-blur-xl rounded-2xl p-4 flex-1 mr-2" style={{
+                              }}>
+                                 <StyledView className="flex-row items-center mb-2">
+                                    <Footprints size={16} color="#fff" strokeWidth={2.5} />
+                                    <StyledText className="text-white/80 text-xs uppercase tracking-wider ml-2 font-semibold">Today</StyledText>
+                                 </StyledView>
+                                 <StyledText className="text-4xl font-black text-white" style={{
+                                    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+                                    textShadowOffset: { width: 0, height: 1 },
+                                    textShadowRadius: 4,
+                                 }}>
+                                    {totalTodaySteps.toLocaleString()}
+                                 </StyledText>
+                                 <StyledText className="text-white/70 text-xs mt-1 font-medium">steps</StyledText>
+                              </StyledView>
+                              
+                              {/* Lifetime Steps Card */}
+                              <StyledView className="bg-white/15 backdrop-blur-xl rounded-2xl p-4 flex-1 ml-2" style={{
+                              }}>
+                                 <StyledView className="flex-row items-center mb-2">
+                                    <Flame size={16} color="#FFD700" strokeWidth={2.5} />
+                                    <StyledText className="text-white/80 text-xs uppercase tracking-wider ml-2 font-semibold">Lifetime</StyledText>
+                                 </StyledView>
+                                 <StyledText className="text-4xl font-black text-white" style={{
+                                    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+                                    textShadowOffset: { width: 0, height: 1 },
+                                    textShadowRadius: 4,
+                                 }}>
+                                    {(user?.lifetimeSteps ?? 0).toLocaleString()}
+                                 </StyledText>
+                                 <StyledText className="text-white/70 text-xs mt-1 font-medium">total steps</StyledText>
+                              </StyledView>
+                           </StyledView>
+                        </StyledView>
+                     </LinearGradient>
+                  </StyledView>
+               </Animated.View>
+
+               {/* Redesigned Stats Layout - Mixed Shapes & Orientations */}
+               <Animated.View entering={FadeInDown.duration(600).delay(200)} style={statsCardsStyle} className="mt-6">
+                  {/* Top Row - Steps (Large, Full Width, Horizontal) */}
+                  <StyledView style={{
+                     shadowColor: '#6A5ACD',
+                     shadowOffset: { width: 0, height: 6 },
+                     shadowOpacity: 0.25,
+                     shadowRadius: 12,
+                     elevation: 8,
+                     marginBottom: 16,
+                  }}>
+                     <StatCard icon={Footprints} label="Steps" value={totalTodaySteps.toString()} index={0} variant="horizontal" />
+                  </StyledView>
+
+                  {/* Bottom Row - Distance & Calories (Side by Side, Vertical Cards) */}
+                  <StyledView className="flex-row space-x-4">
+                     <StyledView className="flex-1" style={{
+                        shadowColor: '#00C853',
+                        shadowOffset: { width: 0, height: 6 },
+                        shadowOpacity: 0.25,
+                        shadowRadius: 12,
+                        elevation: 8,
+                     }}>
+                        <StatCard icon={MapPin} label="Distance" value={`${formatDistance(totalTodaySteps)} km`} index={1} variant="vertical" />
+                     </StyledView>
+                     <StyledView className="flex-1" style={{
+                        shadowColor: '#FF6B6B',
+                        shadowOffset: { width: 0, height: 6 },
+                        shadowOpacity: 0.25,
+                        shadowRadius: 12,
+                        elevation: 8,
+                     }}>
+                        <StatCard icon={Flame} label="Calories" value={estimateCalories(totalTodaySteps).toString()} index={2} variant="vertical" />
+                     </StyledView>
+                  </StyledView>
+               </Animated.View>
+
+               <Animated.View entering={FadeInDown.duration(600).delay(300)} className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl">
                   <StyledPressable
-                     className="flex-row justify-between items-center"
+                     className="flex-row justify-between items-center active:opacity-70"
                      onPress={() => setIsCaloriesExpanded((prev) => !prev)}
                   >
                      <StyledView>
-                        <StyledText className="text-xs uppercase tracking-widest text-subtle-light dark:text-subtle-dark">
+                        <StyledText className="text-xs uppercase tracking-widest text-subtle-light dark:text-subtle-dark font-medium">
                            Calories Burned Today
                         </StyledText>
-                        <StyledText className="text-2xl font-semibold text-text-light dark:text-text-dark">
+                        <StyledText className="text-3xl font-bold text-text-light dark:text-text-dark mt-1 tracking-tight">
                            {totalCaloriesToday} kcal
                         </StyledText>
                      </StyledView>
-                     <StyledText className="text-lg text-subtle-light dark:text-subtle-dark">
-                        {isCaloriesExpanded ? "▲" : "▼"}
-                     </StyledText>
+                     <StyledView className="bg-primary/10 dark:bg-primary/20 p-3 rounded-2xl">
+                        <StyledText className="text-2xl text-primary">
+                           {isCaloriesExpanded ? "▲" : "▼"}
+                        </StyledText>
+                     </StyledView>
                   </StyledPressable>
 
                   {isCaloriesExpanded && (
-                     <Animated.View
-                        style={{
-                           opacity: expandAnim,
-                           transform: [
-                              {
-                                 translateY: expandAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [12, 0],
-                                 }),
-                              },
-                           ],
-                        }}
-                     >
+                     <Animated.View style={expandedStyle}>
                         <StyledView className="mt-6">
                            <StyledView className="flex-row justify-between items-center">
                               <StyledText className="text-lg font-semibold text-text-light dark:text-text-dark">
@@ -506,33 +750,44 @@ export default function Index() {
                                     </StyledText>
                                  </StyledView>
                               ) : (
-                                 <ScrollView
+                                 <Animated.ScrollView
                                     horizontal
                                     showsHorizontalScrollIndicator={false}
                                     contentContainerStyle={{ paddingRight: 16 }}
                                  >
                                     <StyledView className="flex-row items-end">
-                                       {hourlyCalories.map((data) => {
+                                       {hourlyCalories.map((data, idx) => {
                                           const barHeight = maxHourlyCalories
                                              ? Math.max((data.calories / maxHourlyCalories) * chartHeight, 4)
                                              : 4;
                                           return (
-                                             <StyledView key={data.label} className="items-center mx-[4px]">
-                                                <StyledText className="text-[10px] text-text-light dark:text-text-dark mb-1">
+                                             <Animated.View 
+                                                key={data.label} 
+                                                className="items-center mx-[4px]"
+                                                entering={FadeInUp.duration(400).delay(idx * 50)}
+                                             >
+                                                <StyledText className="text-[10px] text-text-light dark:text-text-dark mb-1 font-semibold">
                                                    {data.calories}
                                                 </StyledText>
-                                                <StyledView
-                                                   className="w-3 rounded-t-2xl bg-gradient-to-t from-primary to-emerald-400"
-                                                   style={{ height: barHeight }}
+                                                <LinearGradient
+                                                   colors={['#00C853', '#6A5ACD']}
+                                                   start={{ x: 0, y: 1 }}
+                                                   end={{ x: 0, y: 0 }}
+                                                   style={{ 
+                                                      width: 12, 
+                                                      height: barHeight,
+                                                      borderTopLeftRadius: 8,
+                                                      borderTopRightRadius: 8,
+                                                   }}
                                                 />
-                                                <StyledText className="mt-1 text-[8px] text-subtle-light dark:text-subtle-dark">
+                                                <StyledText className="mt-1 text-[8px] text-subtle-light dark:text-subtle-dark font-medium">
                                                    {data.label}
                                                 </StyledText>
-                                             </StyledView>
+                                             </Animated.View>
                                           );
                                        })}
                                     </StyledView>
-                                 </ScrollView>
+                                 </Animated.ScrollView>
                               )}
                            </StyledView>
                         </StyledView>
@@ -555,23 +810,34 @@ export default function Index() {
                                  </StyledView>
                               ) : (
                                  <StyledView className="flex-row justify-between items-end">
-                                    {dailyCalories.map((data) => {
+                                    {dailyCalories.map((data, idx) => {
                                        const barHeight = maxDailyCalories
                                           ? Math.max((data.calories / maxDailyCalories) * chartHeight, 6)
                                           : 6;
                                        return (
-                                          <StyledView key={data.label} className="items-center mx-[3px]">
-                                             <StyledText className="text-xs font-medium text-text-light dark:text-text-dark mb-1">
+                                          <Animated.View 
+                                             key={data.label} 
+                                             className="items-center mx-[3px]"
+                                             entering={FadeInUp.duration(500).delay(idx * 80)}
+                                          >
+                                             <StyledText className="text-xs font-bold text-text-light dark:text-text-dark mb-1">
                                                 {data.calories}
                                              </StyledText>
-                                             <StyledView
-                                                className="w-6 rounded-t-2xl bg-gradient-to-t from-primary to-emerald-400"
-                                                style={{ height: barHeight }}
+                                             <LinearGradient
+                                                colors={['#00C853', '#7B68EE']}
+                                                start={{ x: 0, y: 1 }}
+                                                end={{ x: 0, y: 0 }}
+                                                style={{ 
+                                                   width: 24, 
+                                                   height: barHeight,
+                                                   borderTopLeftRadius: 8,
+                                                   borderTopRightRadius: 8,
+                                                }}
                                              />
-                                             <StyledText className="mt-1 text-[10px] text-subtle-light dark:text-subtle-dark">
+                                             <StyledText className="mt-1 text-[10px] text-subtle-light dark:text-subtle-dark font-semibold">
                                                 {data.label}
                                              </StyledText>
-                                          </StyledView>
+                                          </Animated.View>
                                        );
                                     })}
                                  </StyledView>
@@ -580,58 +846,62 @@ export default function Index() {
                         </StyledView>
                      </Animated.View>
                   )}
-               </StyledView>
+               </Animated.View>
 
-               <StyledView className="mt-8 rounded-3xl p-5 bg-card-light dark:bg-card-dark shadow-md">
-                  <StyledText className="text-lg font-semibold text-text-light dark:text-text-dark">
-                     Session controls
+               <Animated.View entering={FadeInDown.duration(600).delay(400)} className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl">
+                  <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark tracking-tight">
+                     Session Controls
                   </StyledText>
-                  <StyledText className="mt-1 text-xs text-subtle-light dark:text-subtle-dark">
+                  <StyledText className="mt-2 text-sm text-subtle-light dark:text-subtle-dark leading-relaxed">
                      Tap start to track a focused walk. We'll keep counting even if you leave the screen.
                   </StyledText>
 
-                  <StyledView className="mt-4 flex-row justify-between">
-                     <StyledView>
-                        <StyledText className="text-subtle-light dark:text-subtle-dark text-xs">Live steps</StyledText>
-                        <StyledText className="text-xl font-semibold text-text-light dark:text-text-dark">
+                  <StyledView className="mt-6 flex-row justify-between">
+                     <StyledView className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl flex-1 mr-2">
+                        <StyledText className="text-subtle-light dark:text-subtle-dark text-xs uppercase tracking-wide">Live steps</StyledText>
+                        <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark mt-1">
                            {liveStepCount}
                         </StyledText>
                      </StyledView>
-                     <StyledView>
-                        <StyledText className="text-subtle-light dark:text-subtle-dark text-xs">Session steps</StyledText>
-                        <StyledText className="text-xl font-semibold text-text-light dark:text-text-dark">
+                     <StyledView className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-2xl flex-1 mx-1">
+                        <StyledText className="text-subtle-light dark:text-subtle-dark text-xs uppercase tracking-wide">Session steps</StyledText>
+                        <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark mt-1">
                            {Math.max(sessionSteps, 0)}
                         </StyledText>
                      </StyledView>
-                     <StyledView className="items-end">
-                        <StyledText className="text-subtle-light dark:text-subtle-dark text-xs">Baseline</StyledText>
-                        <StyledText className="text-xl font-semibold text-text-light dark:text-text-dark">
+                     <StyledView className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-2xl flex-1 ml-2">
+                        <StyledText className="text-subtle-light dark:text-subtle-dark text-xs uppercase tracking-wide">Baseline</StyledText>
+                        <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark mt-1">
                            {baseline}
                         </StyledText>
                      </StyledView>
                   </StyledView>
 
-                  <StyledView className="mt-6 items-center">
+                  <StyledView className="mt-8 items-center">
                      <StyledPressable
-                        className={`w-44 h-44 rounded-full items-center justify-center shadow-2xl transition-all ${
+                        className={`w-48 h-48 rounded-full items-center justify-center shadow-2xl active:scale-95 ${
                            isActive ? "bg-danger" : "bg-primary"
                         }`}
                         onPress={handleToggleWalk}
+                        style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.95 : 1 }] }]}
                      >
-                        <StyledText className="text-white text-3xl font-bold">
+                        <StyledText className="text-white text-4xl font-bold tracking-wider">
                            {isActive ? "STOP" : "START"}
+                        </StyledText>
+                        <StyledText className="text-white/80 text-sm mt-2 uppercase tracking-widest">
+                           {isActive ? "Active" : "Ready"}
                         </StyledText>
                      </StyledPressable>
                   </StyledView>
 
-                  <StyledView className="mt-4 border border-dashed border-primary/30 rounded-2xl px-4 py-3">
-                     <StyledText className="text-[11px] text-subtle-light dark:text-subtle-dark">
-                        Raw total since midnight: {initialTodaySteps} steps • Sensor reading: {liveStepCount}
+                  <StyledView className="mt-6 border-2 border-dashed border-primary/20 rounded-2xl px-4 py-4 bg-primary/5">
+                     <StyledText className="text-xs text-subtle-light dark:text-subtle-dark leading-relaxed">
+                        Raw total since midnight: <StyledText className="font-bold">{initialTodaySteps}</StyledText> steps • Sensor reading: <StyledText className="font-bold">{liveStepCount}</StyledText>
                      </StyledText>
                   </StyledView>
-               </StyledView>
+               </Animated.View>
             </StyledView>
-         </ScrollView>
+         </Animated.ScrollView>
       </SafeAreaView>
    );
 }

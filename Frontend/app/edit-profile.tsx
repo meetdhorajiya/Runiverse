@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Image } from 'react-native';
+import { View, Text, Pressable, Alert, ActivityIndicator, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/context/ThemeContext';
@@ -9,6 +9,7 @@ import { Link, useRouter } from 'expo-router';
 import { profileService } from '@/services/profileService';
 import { authService } from '@/services/AuthService';
 import * as ImagePicker from 'expo-image-picker';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 const EditProfileScreen = () => {
    const { theme } = useTheme();
@@ -96,52 +97,58 @@ const EditProfileScreen = () => {
 
    return (
       <SafeAreaView className={`flex-1 ${bgClass}`}>
-         <View className="flex-row items-center px-6 py-4">
+         <Animated.View entering={FadeInUp.duration(600)} className="flex-row items-center px-6 py-4">
             <Link href="/(tabs)/profile" asChild>
-               <TouchableOpacity className="p-2 mr-4" disabled={loading}>
+               <Pressable 
+                  className="p-2 mr-4 rounded-full active:bg-gray-200 dark:active:bg-gray-800" 
+                  disabled={loading}
+                  style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+               >
                   <Ionicons name="arrow-back" size={26} color={isDarkMode ? 'white' : 'black'} />
-               </TouchableOpacity>
+               </Pressable>
             </Link>
-            <Text className={`text-2xl font-bold ${textClass}`}>Edit Profile</Text>
-         </View>
+            <Text className={`text-3xl font-bold ${textClass} tracking-tight`}>Edit Profile</Text>
+         </Animated.View>
 
-         <ScrollView className="flex-1 px-6" keyboardShouldPersistTaps="handled">
-            <View className={`rounded-xl p-6 mt-4 shadow-md ${cardBgClass}`}>
+         <ScrollView className="flex-1 px-6" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <Animated.View entering={FadeInDown.duration(600).delay(100)} className={`rounded-3xl p-6 mt-4 shadow-xl ${cardBgClass}`}>
                {/* Avatar Section */}
-               <Text className={`text-base mb-2 ${textClass}`}>Avatar</Text>
-               <View className="flex-row items-center mb-4">
+               <Text className={`text-lg font-semibold mb-4 ${textClass} tracking-tight`}>Avatar</Text>
+               <View className="flex-row items-center mb-6">
                   {(pickedImage || avatarUrl) ? (
                      <Image
                         source={{ uri: pickedImage || avatarUrl }}
-                        className="w-20 h-20 rounded-full mr-4"
+                        className="w-24 h-24 rounded-full mr-4 border-4 border-primary-green/30 shadow-lg"
                      />
                   ) : (
-                     <View className="w-20 h-20 rounded-full mr-4 bg-gray-400 items-center justify-center">
-                        <Ionicons name="person" size={36} color="#fff" />
+                     <View className="w-24 h-24 rounded-full mr-4 bg-gradient-to-br from-gray-400 to-gray-500 items-center justify-center shadow-lg">
+                        <Ionicons name="person" size={40} color="#fff" />
                      </View>
                   )}
                   <View className="flex-1">
-                     <TouchableOpacity
+                     <Pressable
                         onPress={pickImage}
                         disabled={loading}
-                        className="bg-primary-green py-2 px-4 rounded-lg mb-2"
+                        className="bg-primary-green py-3 px-5 rounded-2xl mb-2 shadow-md shadow-primary-green/20 active:scale-98"
+                        style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
                      >
-                        <Text className="text-white text-center font-medium">Choose Photo</Text>
-                     </TouchableOpacity>
+                        <Text className="text-black text-center font-bold tracking-wide">Choose Photo</Text>
+                     </Pressable>
                      {(pickedImage || avatarUrl) && (
-                        <TouchableOpacity
+                        <Pressable
                            onPress={removeImage}
                            disabled={loading}
-                           className="bg-red-500 py-2 px-4 rounded-lg"
+                           className="bg-red-500 py-3 px-5 rounded-2xl shadow-md shadow-red-500/20 active:scale-98"
+                           style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
                         >
-                           <Text className="text-white text-center font-medium">Remove</Text>
-                        </TouchableOpacity>
+                           <Text className="text-white text-center font-bold tracking-wide">Remove</Text>
+                        </Pressable>
                      )}
                   </View>
                </View>
 
                {/* Username Field */}
-               <Text className={`text-base mb-2 ${textClass}`}>Username</Text>
+               <Text className={`text-lg font-semibold mb-3 ${textClass} tracking-tight`}>Username</Text>
                <CustomInput
                   iconName="account"
                   placeholder="Enter username"
@@ -152,7 +159,7 @@ const EditProfileScreen = () => {
                />
 
                {/* Avatar URL Field */}
-               <Text className={`text-base mt-4 mb-2 ${textClass}`}>Avatar URL</Text>
+               <Text className={`text-lg font-semibold mt-6 mb-3 ${textClass} tracking-tight`}>Avatar URL</Text>
                <CustomInput
                   iconName="image"
                   placeholder="https://..."
@@ -163,18 +170,19 @@ const EditProfileScreen = () => {
                />
 
                {/* Save Changes Button */}
-               <TouchableOpacity
+               <Pressable
                   onPress={onSave}
                   disabled={loading || !dirty}
-                  className={`mt-6 py-3 rounded-lg ${(loading || !dirty) ? 'opacity-60' : ''} bg-primary-green`}
+                  className={`mt-8 py-4 rounded-2xl ${(loading || !dirty) ? 'opacity-50' : ''} bg-primary-green shadow-xl shadow-primary-green/30 active:scale-98`}
+                  style={({ pressed }) => [{ opacity: pressed && !loading && dirty ? 0.9 : (loading || !dirty) ? 0.5 : 1, transform: [{ scale: pressed && !loading && dirty ? 0.98 : 1 }] }]}
                >
                   {loading ? (
-                     <ActivityIndicator color="#fff" />
+                     <ActivityIndicator color="#000" />
                   ) : (
-                     <Text className="text-white text-center text-lg font-semibold">Save Changes</Text>
+                     <Text className="text-black text-center text-lg font-bold tracking-wide">Save Changes</Text>
                   )}
-               </TouchableOpacity>
-            </View>
+               </Pressable>
+            </Animated.View>
          </ScrollView>
       </SafeAreaView>
    );

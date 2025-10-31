@@ -5,6 +5,8 @@ import { useTheme } from "../../context/ThemeContext";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { useStore } from "@/store/useStore";
 import { leaderboardService, LeaderboardEntry } from "@/services/leaderboardService";
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const LeaderboardScreen = () => {
   const { theme } = useTheme();
@@ -66,9 +68,24 @@ const LeaderboardScreen = () => {
   const renderItem = ({ item, index }: { item: LeaderboardEntry; index: number }) => {
     const rank = index + 1;
     let rankColor = isDarkMode ? "text-gray-400" : "text-gray-600";
-    if (rank === 1) rankColor = "text-yellow-400";
-    if (rank === 2) rankColor = "text-gray-300";
-    if (rank === 3) rankColor = "text-yellow-600";
+    let rankBgColor = isDarkMode ? "bg-gray-700" : "bg-gray-200";
+    let rankIcon = "🏅";
+    
+    if (rank === 1) {
+      rankColor = "text-yellow-400";
+      rankBgColor = "bg-yellow-500/10";
+      rankIcon = "🥇";
+    }
+    if (rank === 2) {
+      rankColor = "text-gray-300";
+      rankBgColor = "bg-gray-400/10";
+      rankIcon = "🥈";
+    }
+    if (rank === 3) {
+      rankColor = "text-yellow-600";
+      rankBgColor = "bg-yellow-600/10";
+      rankIcon = "🥉";
+    }
 
     const avatarSource = item.avatarUrl
       ? { uri: item.avatarUrl }
@@ -77,27 +94,48 @@ const LeaderboardScreen = () => {
     const stepsLabel = `${Math.round(item.steps).toLocaleString()} steps`;
 
     return (
-      <View className={`flex-row items-center p-4 rounded-lg mb-2 ${cardBgClass}`}>
-        <Text className={`text-xl font-bold w-10 ${rankColor}`}>#{rank}</Text>
-        <Image source={avatarSource} className="w-12 h-12 rounded-full mr-4" />
-        <View className="flex-1">
-          <Text className={`text-lg font-semibold ${textClass}`}>{item.username}</Text>
-          <Text className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>{areaLabel}</Text>
+      <Animated.View 
+        entering={FadeInDown.duration(400).delay(index * 50)}
+        className={`flex-row items-center p-5 rounded-3xl mb-3 ${cardBgClass} shadow-md border border-gray-200/50 dark:border-gray-700/50`}
+      >
+        <View className={`${rankBgColor} w-12 h-12 rounded-2xl items-center justify-center mr-3`}>
+          {rank <= 3 ? (
+            <Text className="text-2xl">{rankIcon}</Text>
+          ) : (
+            <Text className={`text-lg font-bold ${rankColor}`}>#{rank}</Text>
+          )}
         </View>
-        <Text className={`text-sm font-semibold text-right ${textClass}`}>{stepsLabel}</Text>
-      </View>
+        <Image source={avatarSource} className="w-14 h-14 rounded-full mr-4 border-2 border-primary/20 shadow-sm" />
+        <View className="flex-1">
+          <Text className={`text-lg font-bold ${textClass} tracking-tight`}>{item.username}</Text>
+          <View className="flex-row items-center mt-1">
+            <FontAwesome5 name="map-marked-alt" size={12} color="#00C853" />
+            <Text className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"} ml-1`}>{areaLabel}</Text>
+          </View>
+        </View>
+        <View className="items-end">
+          <Text className={`text-base font-bold ${textClass}`}>{Math.round(item.steps).toLocaleString()}</Text>
+          <Text className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>steps</Text>
+        </View>
+      </Animated.View>
     );
   };
 
   return (
     <SafeAreaView className={`flex-1 ${bgClass}`}>
       <View className="p-6">
-        <Text className={`text-3xl font-bold mb-2 ${textClass}`}>Leaderboard</Text>
-        <View className="flex-row items-center">
-          <FontAwesome5 name="map-marker-alt" size={16} color={isDarkMode ? "#9CA3AF" : "#4B5563"} />
-          <Text className={`ml-2 text-base ${isDarkMode ? "text-text-secondary" : "text-gray-600"}`}>{city}</Text>
-        </View>
-        {error && <Text className="mt-3 text-sm text-red-400">{error}</Text>}
+        <Animated.View entering={FadeInUp.duration(600).delay(100)}>
+          <Text className={`text-4xl font-bold mb-3 ${textClass} tracking-tight`}>Leaderboard</Text>
+          <View className="flex-row items-center bg-primary/10 dark:bg-primary/20 px-4 py-2 rounded-full self-start">
+            <FontAwesome5 name="map-marker-alt" size={16} color="#00C853" />
+            <Text className={`ml-2 text-base font-semibold ${isDarkMode ? "text-text-primary" : "text-gray-700"}`}>{city}</Text>
+          </View>
+          {error && (
+            <View className="mt-4 bg-red-100 dark:bg-red-900/20 px-4 py-3 rounded-2xl">
+              <Text className="text-sm text-red-700 dark:text-red-300">{error}</Text>
+            </View>
+          )}
+        </Animated.View>
       </View>
 
       {loading && entries.length === 0 ? (

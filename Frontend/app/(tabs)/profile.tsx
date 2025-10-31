@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, Image, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, Pressable, Image, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
@@ -11,6 +11,8 @@ import * as ImagePicker from "expo-image-picker";
 import { avatarService } from "@/services/avatarService";
 import Toast from "react-native-toast-message";
 import { AvatarUploadResponse } from "@/store/types";
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const ProfileScreen = () => {
   const { theme } = useTheme();
@@ -138,82 +140,107 @@ const ProfileScreen = () => {
 
   return (
     <SafeAreaView className={`flex-1 ${bgClass}`}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
         <View className="px-6 pt-6">
-          <View className={`rounded-3xl p-6 mb-6 shadow-lg bg-gradient-to-br from-primary/95 to-emerald-500 dark:from-primary dark:to-emerald-600`}>
-            <View className="relative">
-              <Image
-                source={{ uri: user?.avatarUrl || "https://i.pravatar.cc/150?u=placeholder" }}
-                className="w-24 h-24 rounded-full mr-4 border-2 border-white/80"
-              />
-              <TouchableOpacity
-                onPress={handleAvatarUpload}
-                className="absolute bottom-0 right-2 bg-white p-2 rounded-full"
+          <Animated.View entering={FadeInUp.duration(600).delay(100)}>
+            <View className="rounded-3xl overflow-hidden mb-6 shadow-xl">
+              <LinearGradient
+                colors={['#6A5ACD', '#00C853']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                className="p-6"
               >
-                <Ionicons name="camera" size={16} color="#00C853" />
-              </TouchableOpacity>
+                <View className="relative flex-row items-center mb-4">
+                  <View className="relative">
+                    <Image
+                      source={{ uri: user?.avatarUrl || "https://i.pravatar.cc/150?u=placeholder" }}
+                      className="w-24 h-24 rounded-full border-4 border-white/80 shadow-lg"
+                    />
+                    <Pressable
+                      onPress={handleAvatarUpload}
+                      className="absolute -bottom-1 -right-1 bg-white p-2.5 rounded-full shadow-lg active:scale-95"
+                      style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
+                    >
+                      <Ionicons name="camera" size={18} color="#00C853" />
+                    </Pressable>
+                  </View>
+                  <View className="ml-4 flex-1">
+                    <Text className="text-2xl font-bold text-white tracking-tight">{user?.username || 'Runner'}</Text>
+                    <Text className="text-sm text-white/80 mt-1">{user?.email || 'user@runiverse.com'}</Text>
+                  </View>
+                </View>
+                <Text className="text-sm text-white/90 leading-relaxed mb-4">
+                  Every mile is a memory, every run a new discovery in the Runiverse.
+                </Text>
+                <View className="flex-row justify-between items-center">
+                  <View>
+                    <Text className="text-white/70 text-xs uppercase tracking-wide">City</Text>
+                    <Text className="text-lg font-semibold text-white mt-1">{user?.city || 'Unknown'}</Text>
+                  </View>
+                  <View className="items-end">
+                    <Text className="text-white/70 text-xs uppercase tracking-wide">Territories</Text>
+                    <Text className="text-lg font-semibold text-white mt-1">{formatNumber(user?.territories)}</Text>
+                  </View>
+                </View>
+                <Link href="../edit-profile" asChild>
+                  <Pressable 
+                    className="mt-6 self-start bg-white px-6 py-3 rounded-full shadow-lg active:scale-95"
+                    style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
+                  >
+                    <Text className="text-primary font-semibold tracking-wide">Edit Profile</Text>
+                  </Pressable>
+                </Link>
+              </LinearGradient>
             </View>
-            <Text className="mt-4 text-sm text-white/80">
-              Every mile is a memory, every run a new discovery in the Runiverse.
-            </Text>
-            <View className="mt-4 flex-row justify-between">
-              <View>
-                <Text className="text-white/60 text-xs">City</Text>
-                <Text className="text-lg font-semibold text-white">{user?.city || 'Unknown'}</Text>
-              </View>
-              <View className="items-end">
-                <Text className="text-white/60 text-xs">Territories</Text>
-                <Text className="text-lg font-semibold text-white">{formatNumber(user?.territories)}</Text>
-              </View>
-            </View>
-            <Link href="../edit-profile" asChild>
-              <TouchableOpacity className="mt-6 self-start bg-white px-4 py-2 rounded-full">
-                <Text className="text-primary font-semibold">Edit profile</Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
+          </Animated.View>
 
           {loading && (
-            <View className="flex-row items-center mb-4">
+            <Animated.View entering={FadeInDown.duration(400)} className="flex-row items-center mb-4 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-2xl">
               <ActivityIndicator color={iconColor} />
               <Text className={`ml-3 ${secondaryTextClass}`}>Refreshing profile…</Text>
-            </View>
+            </Animated.View>
           )}
 
           {error && (
-            <Text className={`mb-4 ${isDarkMode ? 'text-red-300' : 'text-red-600'}`}>{error}</Text>
+            <Animated.View entering={FadeInDown.duration(400)}>
+              <Text className={`mb-4 p-3 rounded-2xl ${isDarkMode ? 'text-red-300 bg-red-900/20' : 'text-red-600 bg-red-50'}`}>{error}</Text>
+            </Animated.View>
           )}
 
-          <View className={`rounded-3xl p-6 mb-6 shadow-md ${cardBgClass}`}>
-            <View className="flex-row justify-between items-center">
-              <Text className={`text-xl font-semibold ${textClass}`}>Progress Overview</Text>
-              <Text className={`text-xs ${secondaryTextClass}`}>Auto-sync keeps stats fresh</Text>
+          <Animated.View entering={FadeInDown.duration(600).delay(200)} className={`rounded-3xl p-6 mb-6 shadow-lg ${cardBgClass}`}>
+            <View className="flex-row justify-between items-center mb-5">
+              <Text className={`text-2xl font-bold ${textClass} tracking-tight`}>Progress Overview</Text>
+              <Text className={`text-xs ${secondaryTextClass} uppercase tracking-wide`}>Live</Text>
             </View>
-            <View className="mt-4 flex-row flex-wrap -mx-2">
-              {stats.map((stat) => (
-                <View key={stat.key} className="w-1/2 px-2 pb-4">
-                  <View className={`rounded-2xl p-4 ${statTileBg} shadow-sm`}>
-                    <Text className={`${secondaryTextClass} text-xs uppercase tracking-wide`}>{stat.label}</Text>
-                    <Text className={`text-2xl font-bold mt-2 ${textClass}`}>{stat.value}</Text>
+            <View className="flex-row flex-wrap -mx-2">
+              {stats.map((stat, idx) => (
+                <Animated.View 
+                  key={stat.key} 
+                  entering={FadeInDown.duration(600).delay(300 + idx * 50)}
+                  className="w-1/2 px-2 pb-4"
+                >
+                  <View className={`rounded-2xl p-4 ${statTileBg} shadow-sm border border-gray-200/50 dark:border-gray-700/50`}>
+                    <Text className={`${secondaryTextClass} text-xs uppercase tracking-wide font-medium`}>{stat.label}</Text>
+                    <Text className={`text-2xl font-bold mt-2 ${textClass} tracking-tight`}>{stat.value}</Text>
                   </View>
-                </View>
+                </Animated.View>
               ))}
             </View>
-          </View>
+          </Animated.View>
 
-          <View className={`rounded-3xl p-6 shadow-md ${cardBgClass}`}>
-            <Text className={`text-xl font-semibold mb-2 ${textClass}`}>Account details</Text>
+          <Animated.View entering={FadeInDown.duration(600).delay(400)} className={`rounded-3xl p-6 shadow-lg mb-6 ${cardBgClass}`}>
+            <Text className={`text-xl font-semibold mb-4 ${textClass} tracking-tight`}>Account Details</Text>
             <InfoRow label="Email" value={user?.email || 'Not provided'} isDarkMode={isDarkMode} />
-            <View className="mt-3">
+            <View className="mt-4">
               <InfoRow label="Member since" value={user ? new Date().getFullYear().toString() : '—'} isDarkMode={isDarkMode} />
             </View>
-          </View>
+          </Animated.View>
 
-          <View className={`mt-6 rounded-3xl shadow-md ${cardBgClass}`}>
-            <ProfileOption icon="trophy" text="My Achievements" isDarkMode={isDarkMode} />
-            <ProfileOption icon="route" text="Route History" isDarkMode={isDarkMode} />
-            <ProfileOption icon="user-friends" text="Friends & Community" isDarkMode={isDarkMode} />
-          </View>
+          <Animated.View entering={FadeInDown.duration(600).delay(500)} className={`rounded-3xl shadow-lg overflow-hidden ${cardBgClass}`}>
+            <ProfileOption icon="trophy" text="My Achievements" isDarkMode={isDarkMode} index={0} />
+            <ProfileOption icon="route" text="Route History" isDarkMode={isDarkMode} index={1} />
+            <ProfileOption icon="user-friends" text="Friends & Community" isDarkMode={isDarkMode} index={2} />
+          </Animated.View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -224,14 +251,20 @@ interface ProfileOptionProps {
   icon: keyof typeof FontAwesome5.glyphMap;
   text: string;
   isDarkMode: boolean;
+  index?: number;
 }
 
-const ProfileOption = ({ icon, text, isDarkMode }: ProfileOptionProps) => (
-  <TouchableOpacity className={`flex-row items-center py-4 px-6 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} last:border-b-0`}>
-    <FontAwesome5 name={icon} size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} className="mr-4" />
-    <Text className={`flex-1 text-lg ${isDarkMode ? 'text-text-primary' : 'text-gray-900'}`}>{text}</Text>
-    <Ionicons name="chevron-forward" size={20} color={isDarkMode ? '#A9A9A9' : '#666666'} />
-  </TouchableOpacity>
+const ProfileOption = ({ icon, text, isDarkMode, index = 0 }: ProfileOptionProps) => (
+  <Pressable 
+    className={`flex-row items-center py-5 px-6 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} last:border-b-0 active:bg-gray-100 dark:active:bg-gray-800`}
+    style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+  >
+    <View className="bg-primary/10 dark:bg-primary/20 p-3 rounded-2xl mr-4">
+      <FontAwesome5 name={icon} size={20} color={isDarkMode ? '#FFFFFF' : '#6A5ACD'} />
+    </View>
+    <Text className={`flex-1 text-lg font-medium ${isDarkMode ? 'text-text-primary' : 'text-gray-900'}`}>{text}</Text>
+    <Ionicons name="chevron-forward" size={22} color={isDarkMode ? '#9CA3AF' : '#666666'} />
+  </Pressable>
 );
 
 interface InfoRowProps {

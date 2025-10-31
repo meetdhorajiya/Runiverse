@@ -20,7 +20,7 @@ interface Task {
   createdAt: string;
   expiresAt?: string;
 }
-const API_BASE_URL = "http://10.131.36.100:5000/api";
+const API_BASE_URL = "https://runiverse.onrender.com/api";
 
 const ChallengeCard = ({
   icon,

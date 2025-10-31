@@ -12,7 +12,7 @@ const resolveBaseUrl = (): string => {
 };
 
 // You can swap this line to use `resolveBaseUrl()` later
-const BASE_URL = "http://10.131.36.100:5000";
+const BASE_URL = "https://runiverse.onrender.com";
 
 async function handleResponse<T>(res: Response, path: string): Promise<T> {
   let data: any = null;

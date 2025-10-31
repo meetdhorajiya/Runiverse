@@ -13,6 +13,11 @@ import {
    polygonAreaMeters2,
 } from "@/utils/loopDetection";
 import { territoryService, TerritoryFeature } from "@/services/territoryService";
+import { useStore } from "@/store/useStore";
+import { Footprints, MapPin, Flame } from "lucide-react-native";
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 type LocalRouteSnapshot = {
    date: string;
@@ -40,11 +45,27 @@ const MIN_SPEED_MS = 0.4;
 const MIN_TIME_BETWEEN_UPDATES_MS = 750;
 const SMOOTHING_ALPHA = 0.25;
 
+// Helper functions
+const formatDistance = (meters: number) => {
+   if (meters >= 1000) {
+      return `${(meters / 1000).toFixed(2)} km`;
+   }
+   return `${Math.round(meters)} m`;
+};
+
+const estimateCalories = (meters: number) => {
+   // Rough estimate: ~0.05 calories per meter walked
+   return Math.round(meters * 0.05);
+};
+
 export default function MapScreen() {
+   const user = useStore((s) => s.user);
    const [location, setLocation] = useState<[number, number] | null>(null);
    const [route, setRoute] = useState<[number, number][]>([]);
    const [territories, setTerritories] = useState<TerritoryFeature[]>([]);
    const [showBuildings, setShowBuildings] = useState(true);
+   const [routeDistance, setRouteDistance] = useState(0);
+   const [territoriesClaimed, setTerritoriesClaimed] = useState(0);
    const routeStartRef = useRef<number | null>(null);
    const routeRef = useRef<[number, number][]>([]);
    const cameraRef = useRef<Camera>(null);
@@ -100,6 +121,7 @@ export default function MapScreen() {
       try {
          const fetched = await territoryService.fetchTerritories();
          setTerritories(fetched);
+         setTerritoriesClaimed(fetched.length);
       } catch (error) {
          console.warn("Failed to load territories", error);
       }
@@ -122,7 +144,11 @@ export default function MapScreen() {
             },
          };
 
-         setTerritories((prevT) => [...prevT, optimistic]);
+         setTerritories((prevT) => {
+            const newTerritories = [...prevT, optimistic];
+            setTerritoriesClaimed(newTerritories.length);
+            return newTerritories;
+         });
 
          territoryService
             .claimTerritory({
@@ -140,9 +166,11 @@ export default function MapScreen() {
             })
             .catch((error) => {
                console.warn("Territory save failed", error);
-               setTerritories((prevT) =>
-                  prevT.filter((territory) => territory.properties?.localId !== localId)
-               );
+               setTerritories((prevT) => {
+                  const filtered = prevT.filter((territory) => territory.properties?.localId !== localId);
+                  setTerritoriesClaimed(filtered.length);
+                  return filtered;
+               });
             });
       },
       []
@@ -219,6 +247,16 @@ export default function MapScreen() {
 
    useEffect(() => {
       routeRef.current = route;
+      // Calculate total route distance
+      if (route.length > 1) {
+         let totalDistance = 0;
+         for (let i = 1; i < route.length; i++) {
+            totalDistance += distance(route[i - 1], route[i]);
+         }
+         setRouteDistance(totalDistance);
+      } else {
+         setRouteDistance(0);
+      }
    }, [route]);
 
    useEffect(() => {
@@ -427,6 +465,61 @@ export default function MapScreen() {
                   <Text style={styles.toggleText}>{showBuildings ? 'Hide 3D' : 'Show 3D'}</Text>
                </TouchableOpacity>
             </View>
+
+            {/* Sticky Bottom Stats Bar */}
+            <Animated.View 
+               entering={FadeInDown.duration(800).delay(300)}
+               style={[
+                  styles.stickyBottomBar,
+                  { 
+                     bottom: insets.bottom + 8,
+                     left: insets.left + 8,
+                     right: insets.right + 8,
+                  }
+               ]}
+            >
+               <BlurView intensity={80} tint="dark" style={{ borderRadius: 24, overflow: 'hidden' }}>
+                  <LinearGradient
+                     colors={['rgba(106, 90, 205, 0.95)', 'rgba(0, 200, 83, 0.95)']}
+                     start={{ x: 0, y: 0 }}
+                     end={{ x: 1, y: 0 }}
+                     style={styles.gradientContainer}
+                  >
+                     {/* Distance Stat */}
+                     <View style={styles.statItem}>
+                        <View style={styles.iconContainer}>
+                           <MapPin size={18} color="#fff" strokeWidth={2.5} />
+                        </View>
+                        <View>
+                           <Text style={styles.statLabel}>Distance</Text>
+                           <Text style={styles.statValue}>{formatDistance(routeDistance)}</Text>
+                        </View>
+                     </View>
+
+                     {/* Territories Stat */}
+                     <View style={styles.statItem}>
+                        <View style={styles.iconContainer}>
+                           <Flame size={18} color="#FFD700" strokeWidth={2.5} />
+                        </View>
+                        <View>
+                           <Text style={styles.statLabel}>Territories</Text>
+                           <Text style={styles.statValue}>{territoriesClaimed}</Text>
+                        </View>
+                     </View>
+
+                     {/* Calories Stat */}
+                     <View style={styles.statItem}>
+                        <View style={styles.iconContainer}>
+                           <Footprints size={18} color="#fff" strokeWidth={2.5} />
+                        </View>
+                        <View>
+                           <Text style={styles.statLabel}>Calories</Text>
+                           <Text style={styles.statValue}>{estimateCalories(routeDistance)}</Text>
+                        </View>
+                     </View>
+                  </LinearGradient>
+               </BlurView>
+            </Animated.View>
          </View>
       </SafeAreaView>
    );
@@ -473,7 +566,41 @@ const styles = StyleSheet.create({
       color: '#fff',
       fontSize: 12,
       fontWeight: '600'
-   }
+   },
+   stickyBottomBar: {
+      position: 'absolute',
+      zIndex: 50,
+   },
+   gradientContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-around',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 24,
+   },
+   statItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+   },
+   iconContainer: {
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+      padding: 8,
+      borderRadius: 12,
+   },
+   statLabel: {
+      color: 'rgba(255, 255, 255, 0.7)',
+      fontSize: 10,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+   },
+   statValue: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: 'bold',
+   },
 });
 
 function smoothCoordinate(prev: [number, number] | null, next: [number, number]): [number, number] {

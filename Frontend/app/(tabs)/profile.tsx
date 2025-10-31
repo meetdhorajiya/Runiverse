@@ -241,6 +241,23 @@ const ProfileScreen = () => {
             <ProfileOption icon="route" text="Route History" isDarkMode={isDarkMode} index={1} />
             <ProfileOption icon="user-friends" text="Friends & Community" isDarkMode={isDarkMode} index={2} />
           </Animated.View>
+
+          <Animated.View entering={FadeInDown.duration(600).delay(550)} className="mt-6">
+            <Link href="/settings" asChild>
+              <Pressable 
+                className={`rounded-3xl shadow-lg overflow-hidden flex-row items-center justify-between py-5 px-6 ${cardBgClass} active:opacity-80`}
+                style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+              >
+                <View className="flex-row items-center flex-1">
+                  <View className="bg-primary/10 dark:bg-primary/20 p-3 rounded-2xl mr-4">
+                    <Ionicons name="settings" size={24} color={isDarkMode ? '#00C853' : '#6A5ACD'} />
+                  </View>
+                  <Text className={`text-lg font-semibold ${textClass}`}>Settings</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={22} color={isDarkMode ? '#9CA3AF' : '#666666'} />
+              </Pressable>
+            </Link>
+          </Animated.View>
         </View>
       </ScrollView>
     </SafeAreaView>

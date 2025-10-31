@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Pedometer } from "expo-sensors";
 import { StyledPressable, StyledText, StyledView } from "@/components/Styled";
 import { StatCard } from "@/components/StatCard";
+import { RouteHistoryCard } from "@/components/RouteHistoryCard";
 import { Footprints, MapPin, Flame } from "lucide-react-native";
 import { useStore } from "@/store/useStore";
 import Animated, { 
@@ -22,6 +23,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { routeHistoryService, RouteHistoryEntry } from "@/services/routeHistoryService";
 
 // rough estimations
 const formatDistance = (steps: number) => (steps * 0.0008).toFixed(2); // ~0.8m/step
@@ -93,6 +95,8 @@ export default function Index() {
    const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
    const totalStepsRef = useRef(0);
    const latestSnapshotRef = useRef<TodayMetricsSnapshot | null>(null);
+   const [routeHistory, setRouteHistory] = useState<RouteHistoryEntry[]>([]);
+   const [isLoadingRouteHistory, setIsLoadingRouteHistory] = useState(true);
 
    const [isActive, setIsActive] = useState(false);
    const [baseline, setBaseline] = useState(0);
@@ -183,6 +187,30 @@ export default function Index() {
       };
 
       hydrateSnapshot();
+   }, []);
+
+   useEffect(() => {
+      let isMounted = true;
+      routeHistoryService
+         .getRouteHistory()
+         .then((entries) => {
+            if (!isMounted) {
+               return;
+            }
+            setRouteHistory(entries);
+         })
+         .catch((error) => {
+            console.log("route history load failed:", error);
+         })
+         .finally(() => {
+            if (isMounted) {
+               setIsLoadingRouteHistory(false);
+            }
+         });
+
+      return () => {
+         isMounted = false;
+      };
    }, []);
 
    useEffect(() => {
@@ -528,8 +556,6 @@ export default function Index() {
       );
 
       return {
-         transform: [{ scale }, { translateY }],
-         opacity,
       };
    });
 
@@ -539,20 +565,20 @@ export default function Index() {
          <Animated.View 
             style={[stickyHeaderStyle, { 
                position: 'absolute', 
-               top: 0, 
-               left: 0, 
-               right: 0, 
+               top: 32, 
+               left: 12, 
+               right: 12, 
                zIndex: 100,
                height: STICKY_HEADER_HEIGHT 
             }]}
             pointerEvents={isHeaderSticky ? 'auto' : 'none'}
          >
-            <BlurView intensity={80} tint="default" className="flex-1">
+            <BlurView intensity={80} tint="default" className="flex-1 rounded-3xl overflow-hidden">
                <LinearGradient
                   colors={['rgba(106, 90, 205, 0.95)', 'rgba(0, 200, 83, 0.95)']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  className="flex-1 px-4 py-3 flex-row items-center justify-around border-b border-white/10"
+                  className="flex-1 px-4 py-3 flex-row items-center justify-around"
                >
                   {/* Compact Step Count */}
                   <StyledView className="flex-row items-center">
@@ -675,7 +701,7 @@ export default function Index() {
                </Animated.View>
 
                {/* Redesigned Stats Layout - Mixed Shapes & Orientations */}
-               <Animated.View entering={FadeInDown.duration(600).delay(200)} style={statsCardsStyle} className="mt-6">
+               <Animated.View style={statsCardsStyle} className="mt-6">
                   {/* Top Row - Steps (Large, Full Width, Horizontal) */}
                   <StyledView style={{
                      shadowColor: '#6A5ACD',
@@ -846,6 +872,43 @@ export default function Index() {
                         </StyledView>
                      </Animated.View>
                   )}
+               </Animated.View>
+
+               <Animated.View entering={FadeInDown.duration(600).delay(340)} className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl">
+                  <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark tracking-tight">
+                     Route History
+                  </StyledText>
+                  <StyledText className="mt-2 text-sm text-subtle-light dark:text-subtle-dark leading-relaxed">
+                     Relive the shapes of your recent walks. Each card captures the polygon you covered and your total distance for that day.
+                  </StyledText>
+
+                  <StyledView className="mt-6">
+                     {isLoadingRouteHistory ? (
+                        <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
+                           Loading route history...
+                        </StyledText>
+                     ) : routeHistory.length === 0 ? (
+                        <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
+                           Start logging walks to see your route history visualized here.
+                        </StyledText>
+                     ) : (
+                        <Animated.ScrollView
+                           horizontal
+                           showsHorizontalScrollIndicator={false}
+                           contentContainerStyle={{ paddingRight: 24 }}
+                        >
+                           {routeHistory.map((entry, idx) => (
+                              <Animated.View
+                                 key={entry.id}
+                                 entering={FadeInUp.duration(500).delay(idx * 80)}
+                                 style={{ marginRight: idx === routeHistory.length - 1 ? 0 : 16 }}
+                              >
+                                 <RouteHistoryCard entry={entry} />
+                              </Animated.View>
+                           ))}
+                        </Animated.ScrollView>
+                     )}
+                  </StyledView>
                </Animated.View>
 
                <Animated.View entering={FadeInDown.duration(600).delay(400)} className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl">

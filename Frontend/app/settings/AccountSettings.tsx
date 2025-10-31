@@ -120,63 +120,190 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
+  Pressable,
   View,
+  Alert,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "../../context/ThemeContext";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
+import { useStore } from "@/store/useStore";
+import Toast from "react-native-toast-message";
 
 export default function AccountSettings() {
-  const [name, setName] = useState("Change Name");
-  const [email, setEmail] = useState("user@example.com");
-  const [password, setPassword] = useState("********");
+  const { theme } = useTheme();
+  const router = useRouter();
+  const user = useStore((s) => s.user);
+  const updateUser = useStore((s) => s.updateUser);
+  const isDarkMode = theme === "dark";
+
+  const [name, setName] = useState(user?.username || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const bgClass = isDarkMode ? "bg-background-dark" : "bg-gray-100";
+  const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
+  const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white";
+  const inputBg = isDarkMode ? "bg-gray-800" : "bg-gray-100";
+  const inputText = isDarkMode ? "text-white" : "text-gray-900";
+
+  const handleUpdate = async () => {
+    setLoading(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      updateUser({ username: name, email });
+      Toast.show({
+        type: "success",
+        text1: "Account Updated",
+        text2: "Your account information has been saved.",
+      });
+    } catch (error: any) {
+      Toast.show({
+        type: "error",
+        text1: "Update Failed",
+        text2: error.message || "Could not update account",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete Account",
+      "Are you sure you want to permanently delete your account? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            Toast.show({
+              type: "info",
+              text1: "Account Deletion",
+              text2: "This feature will be implemented soon.",
+            });
+          },
+        },
+      ]
+    );
+  };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
-    >
-      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
-        <Text style={styles.header}>👤 Account Settings</Text>
+    <SafeAreaView className={`flex-1 ${bgClass}`}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+      >
+        <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+          <View className="px-6 pt-6">
+            <View className="flex-row items-center mb-6">
+              <Pressable onPress={() => router.back()} className="mr-4 p-2 -ml-2">
+                <Ionicons name="arrow-back" size={28} color={isDarkMode ? "white" : "black"} />
+              </Pressable>
+              <Text className={`text-3xl font-bold ${textClass} tracking-tight`}>Account Settings</Text>
+            </View>
 
-        {/* Name */}
-        <Text style={styles.label}>Name</Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} />
+            <Animated.View entering={FadeInDown.duration(600).delay(100)} className={`rounded-3xl p-6 mb-6 shadow-lg ${cardBgClass}`}>
+              <View className="flex-row items-center mb-6">
+                <View className="bg-primary/10 dark:bg-primary/20 p-3 rounded-2xl mr-3">
+                  <Ionicons name="person" size={24} color="#6A5ACD" />
+                </View>
+                <Text className={`text-xl font-bold ${textClass}`}>Profile Information</Text>
+              </View>
 
-        {/* Email */}
-        <Text style={styles.label}>Email</Text>
-        <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" />
+              <View className="mb-4">
+                <Text className={`text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Username
+                </Text>
+                <TextInput
+                  className={`${inputBg} ${inputText} px-4 py-3 rounded-xl text-base`}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Enter your username"
+                  placeholderTextColor={isDarkMode ? "#666" : "#999"}
+                />
+              </View>
 
-        {/* Password */}
-        <Text style={styles.label}>Password</Text>
-        <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry />
+              <View className="mb-4">
+                <Text className={`text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Email Address
+                </Text>
+                <TextInput
+                  className={`${inputBg} ${inputText} px-4 py-3 rounded-xl text-base`}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  placeholder="Enter your email"
+                  placeholderTextColor={isDarkMode ? "#666" : "#999"}
+                  autoCapitalize="none"
+                />
+              </View>
 
-        {/* Buttons */}
-        <TouchableOpacity style={styles.button}>
-          <Text style={styles.buttonText}>Update Account</Text>
-        </TouchableOpacity>
+              <View className="mb-6">
+                <Text className={`text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  New Password (optional)
+                </Text>
+                <TextInput
+                  className={`${inputBg} ${inputText} px-4 py-3 rounded-xl text-base`}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  placeholder="Enter new password"
+                  placeholderTextColor={isDarkMode ? "#666" : "#999"}
+                />
+              </View>
 
-        <TouchableOpacity style={[styles.button, { backgroundColor: "#ff4d4d" }]}>
-          <Text style={styles.buttonText}>Delete Account</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+              <Pressable
+                onPress={handleUpdate}
+                disabled={loading}
+                className="active:scale-95"
+                style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
+              >
+                <LinearGradient
+                  colors={['#6A5ACD', '#00C853']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  className="py-4 rounded-xl items-center"
+                >
+                  <Text className="text-white font-bold text-base tracking-wide">
+                    {loading ? "Updating..." : "Update Account"}
+                  </Text>
+                </LinearGradient>
+              </Pressable>
+            </Animated.View>
+
+            <Animated.View entering={FadeInDown.duration(600).delay(200)} className={`rounded-3xl p-6 shadow-lg ${cardBgClass}`}>
+              <View className="flex-row items-center mb-4">
+                <View className="bg-red-500/10 p-3 rounded-2xl mr-3">
+                  <Ionicons name="warning" size={24} color="#EF4444" />
+                </View>
+                <Text className={`text-xl font-bold ${textClass}`}>Danger Zone</Text>
+              </View>
+              
+              <Text className={`text-sm mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Permanently delete your account and all associated data. This action cannot be undone.
+              </Text>
+
+              <Pressable
+                onPress={handleDeleteAccount}
+                className="bg-red-500 py-4 rounded-xl items-center active:scale-95"
+                style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
+              >
+                <Text className="text-white font-bold text-base tracking-wide">Delete Account</Text>
+              </Pressable>
+            </Animated.View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#121212", padding: 20 },
-  header: { fontSize: 22, fontWeight: "bold", color: "#00e0ff", marginBottom: 20 },
-  label: { color: "#bbb", marginTop: 15, marginBottom: 5 },
-  input: {
-    backgroundColor: "#1e1e1e",
-    color: "#fff",
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 5,
-  },
-  button: { marginTop: 20, backgroundColor: "#00e0ff", padding: 12, borderRadius: 10, alignItems: "center" ,bottom:10},
-  buttonText: { color: "#fff", fontWeight: "bold" },
-});

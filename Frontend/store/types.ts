@@ -1,7 +1,7 @@
 export interface User {
   id: string;
   username: string;
-  avatarUrl: string; // may be null from backend; keep string for now to simplify UI usage
+  avatarUrl: string | null; // may be null from backend; keep string for now to simplify UI usage
   groupId: string | null;
   // Extended fields aligned with backend
   email?: string;
@@ -9,6 +9,10 @@ export interface User {
   distance?: number; // meters
   territories?: number;
   displayName?: string | null;
+  city?: string | null;
+  lifetimeSteps?: number;
+  lifetimeDistance?: number;
+  token?: string;
 }
 
 export interface Group {
@@ -53,6 +57,7 @@ export interface Challenge {
   currentProgress: number;
   type: "steps" | "distance";
   isCompleted: boolean;
+  joined?: boolean;
 }
 
 export interface Badge {
@@ -61,4 +66,12 @@ export interface Badge {
   description: string;
   earnedOn: string | null;
   icon: string; // Placeholder for image/icon name
+}
+
+export interface AvatarUploadResponse {
+  success: boolean;
+  data?: {
+    avatarUrl?: string | null;
+  };
+  message?: string;
 }

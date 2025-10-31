@@ -70,9 +70,10 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 
-    if (user.password === "GOOGLE_AUTH") {
-      return res.status(400).json({ success: false, message: "Use Google login for this account" });
-    }
+    // Deprecated Google-auth placeholder left here for future social login work.
+    // if (user.password === "GOOGLE_AUTH") {
+    //   return res.status(400).json({ success: false, message: "Use Google login for this account" });
+    // }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {

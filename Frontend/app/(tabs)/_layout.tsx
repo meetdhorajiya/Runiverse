@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
-import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'; // Import MaterialCommunityIcons
+import { Award, BarChart3, Home, MapPinned, User } from "lucide-react-native";
 
 export default function TabLayout() {
   const { theme } = useTheme();
@@ -24,8 +24,8 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, size }) => (
-            <FontAwesome5 name="home" size={size} color={color} />
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+            <Home color={color} size={size ?? 24} strokeWidth={2.2} />
           ),
         }}
       />
@@ -33,8 +33,8 @@ export default function TabLayout() {
         name="leaderboard"
         options={{
           title: 'Leaders',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart" size={size} color={color} />
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+            <BarChart3 color={color} size={size ?? 24} strokeWidth={2.2} />
           ),
         }}
       />
@@ -42,9 +42,8 @@ export default function TabLayout() {
         name="map"
         options={{
           title: 'Run',
-          tabBarIcon: ({ color, size }) => (
-            // --- UPDATED MAP ICON ---
-            <MaterialCommunityIcons name="map-marker-distance" size={size} color={color} />
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+            <MapPinned color={color} size={size ?? 24} strokeWidth={2.2} />
           ),
         }}
       />
@@ -52,9 +51,8 @@ export default function TabLayout() {
         name="challenges"
         options={{
           title: 'Challenges',
-          tabBarIcon: ({ color, size }) => (
-            // --- UPDATED CHALLENGES ICON ---
-            <MaterialCommunityIcons name="medal" size={size} color={color} />
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+            <Award color={color} size={size ?? 24} strokeWidth={2.2} />
           ),
         }}
       />
@@ -62,9 +60,8 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            // --- UPDATED PROFILE ICON ---
-            <FontAwesome5 name="user-circle" size={size} color={color} />
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+            <User color={color} size={size ?? 24} strokeWidth={2.2} />
           ),
         }}
       />

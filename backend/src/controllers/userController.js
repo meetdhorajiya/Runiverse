@@ -2,24 +2,46 @@ import User from "../models/User.js";
 
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
-      .select("-password")
-      .populate("badges");
-    if (!user) return res.status(404).json({ msg: "User not found" });
-    res.json(user);
+    const baseUser = req.user && req.user._id ? req.user : await User.findById(req.user?.id || req.user?._id).select("-password");
+
+    if (!baseUser) {
+      return res.status(404).json({ msg: "User not found" });
+    }
+
+    await baseUser.populate("badges");
+
+    baseUser.ensureDailyReset();
+
+    if (baseUser.isModified()) {
+      await baseUser.save();
+    }
+
+    res.json(baseUser);
   } catch (err) {
+    console.error("getProfile error:", err);
     res.status(500).json({ msg: "Server error" });
   }
 };
 
 export const updateProfile = async (req, res) => {
   try {
-    const allowedFields = ["username", "displayName", "avatar", "location", "bio"];
+    const allowedFields = ["username", "displayName", "avatar", "avatarUrl", "location", "bio", "city"];
     const updates = {};
 
     for (let key of allowedFields) {
       if (req.body[key] !== undefined) {
-        updates[key] = req.body[key];
+        updates[key] = req.body[key] === null ? "" : req.body[key];
+      }
+      if (updates.avatar === "" || updates.avatar === null) {
+        updates.avatar = null;
+      }
+    }
+
+    if (typeof updates.city === "string") {
+      const normalizedCity = updates.city.trim();
+      updates.city = normalizedCity.length > 0 ? normalizedCity : undefined;
+      if (!updates.city) {
+        delete updates.city;
       }
     }
 
@@ -34,7 +56,7 @@ export const updateProfile = async (req, res) => {
       { $set: updates },
       { new: true, runValidators: true }
     ).select("-password");
-
+    console.log("User profile response:", user.avatarUrl);
     res.json(user);
   } catch (err) {
     console.error("Update error:", err);
@@ -73,8 +95,10 @@ export const syncStats = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ msg: "User not found" });
 
-    if (steps) await user.updateSteps(steps);
-    if (distance) await user.updateDistance(distance);
+    user.ensureDailyReset();
+
+    if (steps) user.updateSteps(Number(steps));
+    if (distance) user.updateDistance(Number(distance));
 
     await user.save();
 
@@ -84,6 +108,8 @@ export const syncStats = async (req, res) => {
         id: user._id,
         steps: user.steps,
         distance: user.distance,
+        lifetimeSteps: user.lifetimeSteps,
+        lifetimeDistance: user.lifetimeDistance,
         territories: user.territories,
       },
     });

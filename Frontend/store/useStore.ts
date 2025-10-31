@@ -20,7 +20,7 @@ import { mockGroups } from "@/services/leaderboardService";
 interface UserSlice {
   user: User | null;
   group: Group | null;
-  setUser: (user: User) => void;
+  setUser: (user: User | null) => void;
   joinGroup: (groupId: string) => void;
   updateUser: (partial: Partial<User>) => void;
 }
@@ -69,6 +69,7 @@ export const useStore = create<
         username: "PlayerOne",
         avatarUrl: "https://i.pravatar.cc/150?u=user-1",
         groupId: "group-1",
+        city: "Gandhinagar",
       },
       group: mockGroups[0],
       setUser: (user) => set({ user }),

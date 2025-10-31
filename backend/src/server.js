@@ -4,6 +4,9 @@ import http from "http";
 import { Server } from "socket.io";
 import app from "./app.js";
 import User from "./models/User.js";
+import passport from "passport";
+import "./config/passport.js";
+import "./models/Badge.js";
 
 dotenv.config();
 const PORT = process.env.PORT || 5000;
@@ -22,12 +25,15 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => console.log("User disconnected:", socket.id));
 });
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
+const startServer = async () => {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
     console.log("✅ Connected to MongoDB Atlas");
-    server.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
-  })
-  .catch(err => {
+    server.listen(PORT, "0.0.0.0", () => console.log(`🚀 Server running at http://0.0.0.0:${PORT}`));
+  } catch (err) {
     console.error("❌ MongoDB connection error:", err.message);
     process.exit(1);
-  });
+  }
+};
+
+startServer();

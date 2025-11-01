@@ -26,9 +26,20 @@ export const claimTerritory = async (req, res) => {
   }
 };
 
-export const getTerritories = async (_req, res) => {
+export const getTerritories = async (req, res) => {
   try {
-    const territories = await Territory.find()
+    // Accept optional 'scope' query parameter: 'user' or 'all'
+    // Default to 'all' to show all territories in the city
+    const scope = req.query.scope || 'all';
+    
+    let query = {};
+    if (scope === 'user' && req.user?._id) {
+      // Return only authenticated user's territories
+      query = { owner: req.user._id };
+    }
+    // Otherwise return all territories (for map view showing all users)
+    
+    const territories = await Territory.find(query)
       .populate("owner", "username avatarUrl avatar")
       .sort({ createdAt: -1 });
 

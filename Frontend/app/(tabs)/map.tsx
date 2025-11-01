@@ -58,6 +58,43 @@ const estimateCalories = (meters: number) => {
    return Math.round(meters * 0.05);
 };
 
+// Generate consistent color for a user based on their ID
+const getUserColor = (userId: string | undefined, isCurrentUser: boolean): { fill: string; stroke: string; fillOpacity: number } => {
+   if (isCurrentUser) {
+      // Current user's territories in bright green
+      return {
+         fill: 'rgba(0, 255, 0, 0.5)',
+         stroke: '#00FF00',
+         fillOpacity: 0.5
+      };
+   }
+   
+   if (!userId) {
+      // Unknown user - gray
+      return {
+         fill: 'rgba(128, 128, 128, 0.3)',
+         stroke: '#808080',
+         fillOpacity: 0.3
+      };
+   }
+   
+   // Generate consistent hue from userId
+   let hash = 0;
+   for (let i = 0; i < userId.length; i++) {
+      hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+   }
+   
+   const hue = Math.abs(hash % 360);
+   const saturation = 70 + (Math.abs(hash) % 20); // 70-90%
+   const lightness = 50 + (Math.abs(hash >> 8) % 15); // 50-65%
+   
+   return {
+      fill: `hsla(${hue}, ${saturation}%, ${lightness}%, 0.4)`,
+      stroke: `hsl(${hue}, ${saturation}%, ${Math.max(lightness - 20, 30)}%)`,
+      fillOpacity: 0.4
+   };
+};
+
 export default function MapScreen() {
    const user = useStore((s) => s.user);
    const [location, setLocation] = useState<[number, number] | null>(null);
@@ -65,7 +102,7 @@ export default function MapScreen() {
    const [territories, setTerritories] = useState<TerritoryFeature[]>([]);
    const [showBuildings, setShowBuildings] = useState(true);
    const [routeDistance, setRouteDistance] = useState(0);
-   const [territoriesClaimed, setTerritoriesClaimed] = useState(0);
+   const [userTerritoriesCount, setUserTerritoriesCount] = useState(0);
    const routeStartRef = useRef<number | null>(null);
    const routeRef = useRef<[number, number][]>([]);
    const cameraRef = useRef<Camera>(null);
@@ -119,13 +156,22 @@ export default function MapScreen() {
 
    const loadTerritories = useCallback(async () => {
       try {
-         const fetched = await territoryService.fetchTerritories();
+         // Load ALL territories from all users (scope='all')
+         const fetched = await territoryService.fetchTerritories('all');
+         console.log(`📍 Loaded ${fetched.length} territories from backend (all users)`);
          setTerritories(fetched);
-         setTerritoriesClaimed(fetched.length);
+         
+         // Count only current user's territories
+         const userCount = fetched.filter(t => {
+            const ownerId = t.properties?.owner?._id || t.properties?.owner?.id;
+            return ownerId === user?.id;
+         }).length;
+         setUserTerritoriesCount(userCount);
+         console.log(`👤 User owns ${userCount} territories`);
       } catch (error) {
          console.warn("Failed to load territories", error);
       }
-   }, []);
+   }, [user?.id]);
 
    const submitTerritory = useCallback(
       (closedPolygon: [number, number][], area: number, length: number) => {
@@ -146,7 +192,7 @@ export default function MapScreen() {
 
          setTerritories((prevT) => {
             const newTerritories = [...prevT, optimistic];
-            setTerritoriesClaimed(newTerritories.length);
+            setUserTerritoriesCount(prev => prev + 1);
             return newTerritories;
          });
 
@@ -158,22 +204,26 @@ export default function MapScreen() {
                length,
             })
             .then((saved) => {
+               console.log("✅ Territory saved successfully:", saved);
                setTerritories((prevT) =>
                   prevT.map((territory) =>
                      territory.properties?.localId === localId ? saved : territory
                   )
                );
+               // Refresh territories from backend to ensure sync
+               loadTerritories().catch(err => console.warn("Failed to reload territories:", err));
             })
             .catch((error) => {
-               console.warn("Territory save failed", error);
+               console.error("❌ Territory save failed:", error);
+               alert(`Failed to save territory: ${error.message || 'Unknown error'}`);
                setTerritories((prevT) => {
                   const filtered = prevT.filter((territory) => territory.properties?.localId !== localId);
-                  setTerritoriesClaimed(filtered.length);
+                  setUserTerritoriesCount(prev => Math.max(0, prev - 1));
                   return filtered;
                });
             });
       },
-      []
+      [loadTerritories]
    );
 
    const handleLocationUpdate = useCallback(
@@ -219,10 +269,15 @@ export default function MapScreen() {
                const area = polygonAreaMeters2(newPath);
                const MIN_AREA = 100;
 
+               console.log(`🔄 Loop detected! Area: ${area.toFixed(2)}m², Min required: ${MIN_AREA}m²`);
+
                if (area > MIN_AREA) {
                   const closedPolygon = [...newPath, newPath[0]];
                   const length = pathLengthMeters(newPath);
+                  console.log(`✅ Valid territory formed - Area: ${area.toFixed(2)}m², Length: ${length.toFixed(2)}m`);
                   submitTerritory(closedPolygon, area, length);
+               } else {
+                  console.log(`❌ Loop too small (${area.toFixed(2)}m² < ${MIN_AREA}m²) - ignoring`);
                }
 
                routeStartRef.current = null;
@@ -417,21 +472,27 @@ export default function MapScreen() {
                {/* Territories */}
                {territories.map((territory, index) => {
                   const featureKey = territory.properties?.id ?? territory.properties?.localId ?? index;
+                  const ownerId = territory.properties?.owner?._id || territory.properties?.owner?.id;
+                  const ownerName = territory.properties?.owner?.username || 'Unknown';
+                  const isCurrentUser = ownerId === user?.id;
+                  const colors = getUserColor(ownerId, isCurrentUser);
+                  
                   return (
                      <ShapeSource key={`territory-${featureKey}`} id={`territory-${featureKey}`} shape={territory}>
                         <FillLayer
                            id={`territory-fill-${featureKey}`}
                            style={{
-                              fillColor: "rgba(255,0,0,0.4)",
-                              fillOutlineColor: "red",
+                              fillColor: colors.fill,
+                              fillOutlineColor: colors.stroke,
+                              fillOpacity: colors.fillOpacity,
                            }}
                         />
                         <LineLayer
                            id={`territory-line-${featureKey}`}
                            style={{
-                              lineColor: 'red',
-                              lineWidth: 3,
-                              lineOpacity: 0.9,
+                              lineColor: colors.stroke,
+                              lineWidth: isCurrentUser ? 4 : 3,
+                              lineOpacity: isCurrentUser ? 1.0 : 0.8,
                            }}
                         />
                      </ShapeSource>
@@ -502,8 +563,8 @@ export default function MapScreen() {
                            <Flame size={18} color="#FFD700" strokeWidth={2.5} />
                         </View>
                         <View>
-                           <Text style={styles.statLabel}>Territories</Text>
-                           <Text style={styles.statValue}>{territoriesClaimed}</Text>
+                           <Text style={styles.statLabel}>Your Territories</Text>
+                           <Text style={styles.statValue}>{userTerritoriesCount}</Text>
                         </View>
                      </View>
 

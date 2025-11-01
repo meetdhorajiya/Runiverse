@@ -39,11 +39,11 @@ const BUILDING_3D_LAYER_ID = 'mapbox-buildings-3d';
 const BUILDING_SHADOW_LAYER_ID = 'mapbox-buildings-shadows';
 
 // Tracking tuning
-const MIN_ACCURACY_METERS = 25;
-const MIN_DISTANCE_DELTA_METERS = 3;
-const MIN_SPEED_MS = 0.4;
-const MIN_TIME_BETWEEN_UPDATES_MS = 750;
-const SMOOTHING_ALPHA = 0.25;
+const MIN_ACCURACY_METERS = 40;
+const MIN_DISTANCE_DELTA_METERS = 2;
+const MIN_TIME_BETWEEN_UPDATES_MS = 500;
+const BASE_SMOOTHING_ALPHA = 0.22;
+const MAX_SMOOTHING_SNAP_DISTANCE_METERS = 35;
 
 // Helper functions
 const formatDistance = (meters: number) => {
@@ -242,7 +242,10 @@ export default function MapScreen() {
          lastTimestampRef.current = timestamp;
 
          const rawCoord: [number, number] = [loc.coords.longitude, loc.coords.latitude];
-         const smoothedCoord = smoothCoordinate(prevAcceptedCoordRef.current, rawCoord);
+         const prevAccepted = prevAcceptedCoordRef.current;
+         const deltaToPrev = prevAccepted ? distance(prevAccepted, rawCoord) : undefined;
+         const smoothingAlpha = getDynamicSmoothingAlpha(accuracy, deltaToPrev, speed);
+         const smoothedCoord = smoothCoordinate(prevAccepted, rawCoord, smoothingAlpha);
          prevAcceptedCoordRef.current = smoothedCoord;
          setLocation(smoothedCoord);
 
@@ -258,7 +261,7 @@ export default function MapScreen() {
             const lastCoord = prev[prev.length - 1];
             const distToLast = distance(lastCoord, smoothedCoord);
 
-            if (distToLast < MIN_DISTANCE_DELTA_METERS && speed < MIN_SPEED_MS) {
+            if (distToLast < MIN_DISTANCE_DELTA_METERS) {
                nextRoute = prev;
                return prev;
             }
@@ -664,16 +667,43 @@ const styles = StyleSheet.create({
    },
 });
 
-function smoothCoordinate(prev: [number, number] | null, next: [number, number]): [number, number] {
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+function getDynamicSmoothingAlpha(accuracy?: number | null, deltaMeters?: number, speed?: number | null): number {
+   const normalizedAccuracy = accuracy ? clamp(accuracy, 5, 60) : 30;
+   const accuracyInfluence = 1 - (normalizedAccuracy - 5) / 55; // 5m => 1, 60m => ~0
+   const movementInfluence = clamp((deltaMeters ?? 0) / 25, 0, 1);
+   const speedInfluence = clamp((speed ?? 0) / 3, 0, 1);
+
+   const alpha = BASE_SMOOTHING_ALPHA
+      + 0.25 * accuracyInfluence
+      - 0.1 * movementInfluence
+      - 0.05 * speedInfluence;
+
+   return clamp(alpha, 0.15, 0.55);
+}
+
+function smoothCoordinate(
+   prev: [number, number] | null,
+   next: [number, number],
+   alpha: number,
+   snapDistanceMeters: number = MAX_SMOOTHING_SNAP_DISTANCE_METERS
+): [number, number] {
    if (!prev) {
       return next;
    }
 
+   const travelMeters = distance(prev, next);
+   if (travelMeters > snapDistanceMeters) {
+      return next;
+   }
+
+   const clampedAlpha = clamp(alpha, 0.05, 0.7);
    const [prevLon, prevLat] = prev;
    const [nextLon, nextLat] = next;
 
-   const lon = prevLon + SMOOTHING_ALPHA * (nextLon - prevLon);
-   const lat = prevLat + SMOOTHING_ALPHA * (nextLat - prevLat);
+   const lon = prevLon + clampedAlpha * (nextLon - prevLon);
+   const lat = prevLat + clampedAlpha * (nextLat - prevLat);
 
    return [lon, lat];
 }

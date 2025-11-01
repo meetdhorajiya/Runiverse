@@ -1,5 +1,72 @@
 import Territory from "../models/Territory.js";
 
+const toFiniteNumber = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const isSamePoint = (a, b, tolerance = 1e-6) => {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) {
+    return false;
+  }
+  return Math.abs(a[0] - b[0]) <= tolerance && Math.abs(a[1] - b[1]) <= tolerance;
+};
+
+const dedupeSequentialPoints = (ring) => {
+  if (!Array.isArray(ring)) {
+    return [];
+  }
+  const cleaned = [];
+  for (let i = 0; i < ring.length; i += 1) {
+    const point = ring[i];
+    if (!Array.isArray(point) || point.length < 2) {
+      continue;
+    }
+    const lon = toFiniteNumber(point[0]);
+    const lat = toFiniteNumber(point[1]);
+    if (lon === null || lat === null) {
+      continue;
+    }
+    if (!cleaned.length) {
+      cleaned.push([lon, lat]);
+      continue;
+    }
+    const prev = cleaned[cleaned.length - 1];
+    if (prev[0] === lon && prev[1] === lat) {
+      continue;
+    }
+    cleaned.push([lon, lat]);
+  }
+  return cleaned;
+};
+
+const normalizePolygonCoordinates = (raw) => {
+  if (!Array.isArray(raw) || !raw.length) {
+    return null;
+  }
+
+  const rings = raw
+    .map((ring) => dedupeSequentialPoints(ring))
+    .map((ring) => {
+      if (ring.length < 3) {
+        return null;
+      }
+      const first = ring[0];
+      const last = ring[ring.length - 1];
+      const closedRing = isSamePoint(first, last)
+        ? [...ring]
+        : [...ring, [first[0], first[1]]];
+      return closedRing.length >= 4 ? closedRing : null;
+    })
+    .filter(Boolean);
+
+  if (!rings.length) {
+    return null;
+  }
+
+  return rings;
+};
+
 export const claimTerritory = async (req, res) => {
   try {
     const { coordinates, name, area, length } = req.body;
@@ -8,21 +75,39 @@ export const claimTerritory = async (req, res) => {
       return res.status(400).json({ success: false, message: "Polygon coordinates are required" });
     }
 
+    const normalizedCoordinates = normalizePolygonCoordinates(coordinates);
+
+    if (!normalizedCoordinates) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid polygon coordinates provided",
+      });
+    }
+
     const metrics = {
       area: typeof area === "number" ? area : null,
       length: typeof length === "number" ? length : null,
     };
 
-    const territory = await Territory.create({
-      owner: req.user?._id ?? null,
-      location: { type: "Polygon", coordinates },
-      name: name?.trim() || "Unnamed Territory",
-      claimedOn: new Date(),
-      metrics,
-    });
-    res.json({ success: true, data: territory });
+    try {
+      const territory = await Territory.create({
+        owner: req.user?._id ?? null,
+        location: { type: "Polygon", coordinates: normalizedCoordinates },
+        name: name?.trim() || "Unnamed Territory",
+        claimedOn: new Date(),
+        metrics,
+      });
+      return res.json({ success: true, data: territory });
+    } catch (dbError) {
+      console.error("Territory creation failed", dbError);
+      return res.status(500).json({
+        success: false,
+        message: dbError?.message || "Failed to save territory",
+      });
+    }
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("claimTerritory error", err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 

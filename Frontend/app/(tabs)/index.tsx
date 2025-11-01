@@ -149,8 +149,10 @@ export default function Index() {
       // Restore the last known readings so dev reloads do not wipe today's totals
       const hydrateSnapshot = async () => {
          try {
+            // First, try to load from AsyncStorage (local cache)
             const serialized = await AsyncStorage.getItem(TODAY_SNAPSHOT_KEY);
             if (!serialized) {
+               console.log("📊 No local snapshot found, will use backend data");
                setDailyCalories((prev) => (prev.length ? prev : buildDailySkeleton()));
                setHourlyCalories((prev) => (prev.length ? prev : buildHourlySkeleton()));
                return;
@@ -158,12 +160,14 @@ export default function Index() {
             const snapshot: TodayMetricsSnapshot = JSON.parse(serialized);
             const todayKey = getDayKey(new Date());
             if (snapshot.date !== todayKey) {
+               console.log("📊 Local snapshot is from different day, clearing");
                await AsyncStorage.removeItem(TODAY_SNAPSHOT_KEY);
                setDailyCalories((prev) => (prev.length ? prev : buildDailySkeleton()));
                setHourlyCalories((prev) => (prev.length ? prev : buildHourlySkeleton()));
                return;
             }
 
+            console.log("📊 Hydrating from local snapshot:", snapshot.totalSteps, "steps");
             setTotalTodaySteps(snapshot.totalSteps ?? 0);
             setInitialTodaySteps(snapshot.initialSteps ?? snapshot.totalSteps ?? 0);
             const hydratedHourly = Array.isArray(snapshot.hourlyCalories) && snapshot.hourlyCalories.length
@@ -178,7 +182,7 @@ export default function Index() {
             totalStepsRef.current = snapshot.totalSteps ?? 0;
             lastReadingRef.current = snapshot.totalSteps ?? 0;
          } catch (err) {
-            console.log("hydrate step snapshot failed:", err);
+            console.log("⚠️ hydrate step snapshot failed:", err);
             setDailyCalories((prev) => (prev.length ? prev : buildDailySkeleton()));
             setHourlyCalories((prev) => (prev.length ? prev : buildHourlySkeleton()));
          } finally {

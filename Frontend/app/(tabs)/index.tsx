@@ -2,12 +2,11 @@
 import { useState, useEffect, useRef } from "react";
 import { Platform, PermissionsAndroid, Dimensions } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Pedometer } from "expo-sensors";
 import { StyledPressable, StyledText, StyledView } from "@/components/Styled";
 import { StatCard } from "@/components/StatCard";
-import { RouteHistoryCard } from "@/components/RouteHistoryCard";
-import { Footprints, MapPin, Flame } from "lucide-react-native";
+import { Footprints, MapPin, Flame, Lightbulb } from "lucide-react-native";
 import { useStore } from "@/store/useStore";
 import Animated, { 
    FadeInDown, 
@@ -80,6 +79,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function Index() {
    const user = useStore((s) => s.user);
+   const insets = useSafeAreaInsets();
    const [isPedometerAvailable, setIsPedometerAvailable] = useState<
       "checking" | "yes" | "no"
    >("checking");
@@ -89,8 +89,7 @@ export default function Index() {
    const [totalTodaySteps, setTotalTodaySteps] = useState(0);
    const [dailyCalories, setDailyCalories] = useState<DailyCaloriesEntry[]>([]);
    const [hourlyCalories, setHourlyCalories] = useState<HourlyCaloriesEntry[]>([]);
-   const [isCaloriesExpanded, setIsCaloriesExpanded] = useState(false);
-   const expandProgress = useSharedValue(0);
+   const expandProgress = useSharedValue(1);
    const [hasHydratedSnapshot, setHasHydratedSnapshot] = useState(false);
    const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
    const totalStepsRef = useRef(0);
@@ -142,8 +141,8 @@ export default function Index() {
    });
 
    useEffect(() => {
-      expandProgress.value = withTiming(isCaloriesExpanded ? 1 : 0, { duration: 300 });
-   }, [isCaloriesExpanded, expandProgress]);
+      expandProgress.value = withTiming(1, { duration: 300 });
+   }, [expandProgress]);
 
    useEffect(() => {
       // Restore the last known readings so dev reloads do not wipe today's totals
@@ -507,7 +506,7 @@ export default function Index() {
    const expandedStyle = useAnimatedStyle(() => {
       const opacity = interpolate(expandProgress.value, [0, 1], [0, 1]);
       const translateY = interpolate(expandProgress.value, [0, 1], [-20, 0]);
-      
+
       return {
          opacity,
          transform: [{ translateY }],
@@ -564,12 +563,18 @@ export default function Index() {
    });
 
    return (
-      <SafeAreaView className="flex-1 bg-background-light dark:bg-background-dark">
+      <SafeAreaView
+         className="flex-1 bg-background-light dark:bg-background-dark"
+         style={{
+            paddingTop: Math.max(insets.top, 16),
+            paddingBottom: Math.max(insets.bottom, 16),
+         }}
+      >
          {/* Sticky Header - Compact Stats Bar */}
-         <Animated.View 
+      <Animated.View 
             style={[stickyHeaderStyle, { 
                position: 'absolute', 
-               top: 32, 
+         top: insets.top + 12, 
                left: 12, 
                right: 12, 
                zIndex: 100,
@@ -623,8 +628,9 @@ export default function Index() {
          <Animated.ScrollView 
             onScroll={scrollHandler}
             scrollEventThrottle={16}
-            contentContainerStyle={{ paddingBottom: 24 }} 
+            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 32), paddingTop: 8 }} 
             showsVerticalScrollIndicator={false}
+            contentInsetAdjustmentBehavior="automatic"
          >
             <StyledView className="px-6 pt-6">
                <Animated.View entering={FadeInUp.duration(600).delay(100)}>
@@ -686,7 +692,7 @@ export default function Index() {
                               <StyledView className="bg-white/15 backdrop-blur-xl rounded-2xl p-4 flex-1 ml-2" style={{
                               }}>
                                  <StyledView className="flex-row items-center mb-2">
-                                    <Flame size={16} color="#FFD700" strokeWidth={2.5} />
+                                    <Lightbulb size={16} color="#FFD700" strokeWidth={2.5} />
                                     <StyledText className="text-white/80 text-xs uppercase tracking-wider ml-2 font-semibold">Lifetime</StyledText>
                                  </StyledView>
                                  <StyledText className="text-4xl font-black text-white" style={{
@@ -699,6 +705,41 @@ export default function Index() {
                                  <StyledText className="text-white/70 text-xs mt-1 font-medium">total steps</StyledText>
                               </StyledView>
                            </StyledView>
+                           <StyledView className="mt-8 flex-row justify-between items-center">
+                              {/* Steps Today Card */}
+                              <StyledView className="bg-white/15 backdrop-blur-xl rounded-2xl p-4 flex-1 mr-2" style={{
+                              }}>
+                                 <StyledView className="flex-row items-center mb-2">
+                                    <MapPin size={16} color="#fff" strokeWidth={2.5} />
+                                    <StyledText className="text-white/80 text-xs uppercase tracking-wider ml-2 font-semibold">Distance</StyledText>
+                                 </StyledView>
+                                 <StyledText className="text-3xl font-black text-white" style={{
+                                    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+                                    textShadowOffset: { width: 0, height: 1 },
+                                    textShadowRadius: 4,
+                                 }}>
+                                    {formatDistance(totalTodaySteps)}
+                                 </StyledText>
+                                 <StyledText className="text-white/70 text-xs mt-1 font-medium">Distance Covered</StyledText>
+                              </StyledView>
+                              
+                              {/* Lifetime Steps Card */}
+                              <StyledView className="bg-white/15 backdrop-blur-xl rounded-2xl p-4 flex-1 ml-2" style={{
+                              }}>
+                                 <StyledView className="flex-row items-center mb-2">
+                                    <Flame size={16} color="#FFD700" strokeWidth={2.5} />
+                                    <StyledText className="text-white/80 text-xs uppercase tracking-wider ml-2 font-semibold">Calorie</StyledText>
+                                 </StyledView>
+                                 <StyledText className="text-3xl font-black text-white" style={{
+                                    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+                                    textShadowOffset: { width: 0, height: 1 },
+                                    textShadowRadius: 4,
+                                 }}>
+                                    {estimateCalories(totalTodaySteps).toString()}
+                                 </StyledText>
+                                 <StyledText className="text-white/70 text-xs mt-1 font-medium">Calorie Burned</StyledText>
+                              </StyledView>
+                           </StyledView>
                         </StyledView>
                      </LinearGradient>
                   </StyledView>
@@ -707,7 +748,7 @@ export default function Index() {
                {/* Redesigned Stats Layout - Mixed Shapes & Orientations */}
                <Animated.View style={statsCardsStyle} className="mt-6">
                   {/* Top Row - Steps (Large, Full Width, Horizontal) */}
-                  <StyledView style={{
+                  {/* <StyledView style={{
                      shadowColor: '#6A5ACD',
                      shadowOffset: { width: 0, height: 6 },
                      shadowOpacity: 0.25,
@@ -716,7 +757,7 @@ export default function Index() {
                      marginBottom: 16,
                   }}>
                      <StatCard icon={Footprints} label="Steps" value={totalTodaySteps.toString()} index={0} variant="horizontal" />
-                  </StyledView>
+                  </StyledView> */}
 
                   {/* Bottom Row - Distance & Calories (Side by Side, Vertical Cards) */}
                   <StyledView className="flex-row space-x-4">
@@ -742,176 +783,141 @@ export default function Index() {
                </Animated.View>
 
                <Animated.View entering={FadeInDown.duration(600).delay(300)} className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl">
-                  <StyledPressable
-                     className="flex-row justify-between items-center active:opacity-70"
-                     onPress={() => setIsCaloriesExpanded((prev) => !prev)}
-                  >
-                     <StyledView>
-                        <StyledText className="text-xs uppercase tracking-widest text-subtle-light dark:text-subtle-dark font-medium">
-                           Calories Burned Today
-                        </StyledText>
-                        <StyledText className="text-3xl font-bold text-text-light dark:text-text-dark mt-1 tracking-tight">
-                           {totalCaloriesToday} kcal
-                        </StyledText>
-                     </StyledView>
-                     <StyledView className="bg-primary/10 dark:bg-primary/20 p-3 rounded-2xl">
-                        <StyledText className="text-2xl text-primary">
-                           {isCaloriesExpanded ? "▲" : "▼"}
-                        </StyledText>
-                     </StyledView>
-                  </StyledPressable>
+                  <StyledView>
+                     <StyledText className="text-xs uppercase tracking-widest text-subtle-light dark:text-subtle-dark font-medium">
+                        Calories Burned Today
+                     </StyledText>
+                     <StyledText className="text-3xl font-bold text-text-light dark:text-text-dark mt-1 tracking-tight">
+                        {totalCaloriesToday} kcal
+                     </StyledText>
+                  </StyledView>
 
-                  {isCaloriesExpanded && (
-                     <Animated.View style={expandedStyle}>
-                        <StyledView className="mt-6">
-                           <StyledView className="flex-row justify-between items-center">
-                              <StyledText className="text-lg font-semibold text-text-light dark:text-text-dark">
-                                 Today's Calories by Hour
-                              </StyledText>
-                              <StyledText className="text-xs text-subtle-light dark:text-subtle-dark">
-                                 Updated automatically
-                              </StyledText>
-                           </StyledView>
-                           <StyledView className="mt-3 bg-background-light/60 dark:bg-background-dark/60 rounded-2xl p-4 overflow-hidden">
-                              {hourlyCalories.length === 0 ? (
-                                 <StyledView className="py-6 items-center">
-                                    <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
-                                       Hourly data will appear once we record activity today.
-                                    </StyledText>
-                                 </StyledView>
-                              ) : (
-                                 <Animated.ScrollView
-                                    horizontal
-                                    showsHorizontalScrollIndicator={false}
-                                    contentContainerStyle={{ paddingRight: 16 }}
-                                 >
-                                    <StyledView className="flex-row items-end">
-                                       {hourlyCalories.map((data, idx) => {
-                                          const barHeight = maxHourlyCalories
-                                             ? Math.max((data.calories / maxHourlyCalories) * chartHeight, 4)
-                                             : 4;
-                                          return (
-                                             <Animated.View 
-                                                key={data.label} 
-                                                className="items-center mx-[4px]"
-                                                entering={FadeInUp.duration(400).delay(idx * 50)}
-                                             >
-                                                <StyledText className="text-[10px] text-text-light dark:text-text-dark mb-1 font-semibold">
-                                                   {data.calories}
-                                                </StyledText>
-                                                <LinearGradient
-                                                   colors={['#00C853', '#6A5ACD']}
-                                                   start={{ x: 0, y: 1 }}
-                                                   end={{ x: 0, y: 0 }}
-                                                   style={{ 
-                                                      width: 12, 
-                                                      height: barHeight,
-                                                      borderTopLeftRadius: 8,
-                                                      borderTopRightRadius: 8,
-                                                   }}
-                                                />
-                                                <StyledText className="mt-1 text-[8px] text-subtle-light dark:text-subtle-dark font-medium">
-                                                   {data.label}
-                                                </StyledText>
-                                             </Animated.View>
-                                          );
-                                       })}
-                                    </StyledView>
-                                 </Animated.ScrollView>
-                              )}
-                           </StyledView>
+                  <Animated.View style={expandedStyle}>
+                     <StyledView className="mt-6">
+                        <StyledView className="flex-row justify-between items-center">
+                           <StyledText className="text-lg font-semibold text-text-light dark:text-text-dark">
+                              Today's Calories by Hour
+                           </StyledText>
+                           <StyledText className="text-xs text-subtle-light dark:text-subtle-dark">
+                              Updated automatically
+                           </StyledText>
                         </StyledView>
-
-                        <StyledView className="mt-6">
-                           <StyledView className="flex-row justify-between items-center">
-                              <StyledText className="text-lg font-semibold text-text-light dark:text-text-dark">
-                                 Last 7 Days
-                              </StyledText>
-                              <StyledText className="text-xs text-subtle-light dark:text-subtle-dark">
-                                 Daily calorie estimates
-                              </StyledText>
-                           </StyledView>
-                           <StyledView className="mt-3 bg-background-light/60 dark:bg-background-dark/60 rounded-2xl p-4 overflow-hidden">
-                              {dailyCalories.length === 0 ? (
-                                 <StyledView className="py-6 items-center">
-                                    <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
-                                       We'll chart your calories once we have enough movement data.
-                                    </StyledText>
-                                 </StyledView>
-                              ) : (
-                                 <StyledView className="flex-row justify-between items-end">
-                                    {dailyCalories.map((data, idx) => {
-                                       const barHeight = maxDailyCalories
-                                          ? Math.max((data.calories / maxDailyCalories) * chartHeight, 6)
-                                          : 6;
+                        <StyledView className="mt-3 bg-background-light/60 dark:bg-background-dark/60 rounded-2xl p-4 overflow-hidden">
+                           {hourlyCalories.length === 0 ? (
+                              <StyledView className="py-6 items-center">
+                                 <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
+                                    Hourly data will appear once we record activity today.
+                                 </StyledText>
+                              </StyledView>
+                           ) : (
+                              <Animated.ScrollView
+                                 horizontal
+                                 showsHorizontalScrollIndicator={false}
+                                 contentContainerStyle={{ paddingRight: 16 }}
+                              >
+                                 <StyledView className="flex-row items-end">
+                                    {hourlyCalories.map((data, idx) => {
+                                       const barHeight = maxHourlyCalories
+                                          ? Math.max((data.calories / maxHourlyCalories) * chartHeight, 4)
+                                          : 4;
                                        return (
                                           <Animated.View 
                                              key={data.label} 
-                                             className="items-center mx-[3px]"
-                                             entering={FadeInUp.duration(500).delay(idx * 80)}
+                                             className="items-center mx-[4px]"
+                                             entering={FadeInUp.duration(400).delay(idx * 50)}
                                           >
-                                             <StyledText className="text-xs font-bold text-text-light dark:text-text-dark mb-1">
+                                             <StyledText className="text-[10px] text-text-light dark:text-text-dark mb-1 font-semibold">
                                                 {data.calories}
                                              </StyledText>
                                              <LinearGradient
-                                                colors={['#00C853', '#7B68EE']}
+                                                colors={['#00C853', '#6A5ACD']}
                                                 start={{ x: 0, y: 1 }}
                                                 end={{ x: 0, y: 0 }}
                                                 style={{ 
-                                                   width: 24, 
+                                                   width: 12, 
                                                    height: barHeight,
                                                    borderTopLeftRadius: 8,
                                                    borderTopRightRadius: 8,
                                                 }}
                                              />
-                                             <StyledText className="mt-1 text-[10px] text-subtle-light dark:text-subtle-dark font-semibold">
+                                             <StyledText className="mt-1 text-[8px] text-subtle-light dark:text-subtle-dark font-medium">
                                                 {data.label}
                                              </StyledText>
                                           </Animated.View>
                                        );
                                     })}
                                  </StyledView>
-                              )}
-                           </StyledView>
+                              </Animated.ScrollView>
+                           )}
                         </StyledView>
-                     </Animated.View>
-                  )}
+                     </StyledView>
+
+                     <StyledView className="mt-6">
+                        <StyledView className="flex-row justify-between items-center">
+                           <StyledText className="text-lg font-semibold text-text-light dark:text-text-dark">
+                              Last 7 Days
+                           </StyledText>
+                           <StyledText className="text-xs text-subtle-light dark:text-subtle-dark">
+                              Daily calorie estimates
+                           </StyledText>
+                        </StyledView>
+                        <StyledView className="mt-3 bg-background-light/60 dark:bg-background-dark/60 rounded-2xl p-4 overflow-hidden">
+                           {dailyCalories.length === 0 ? (
+                              <StyledView className="py-6 items-center">
+                                 <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
+                                    We'll chart your calories once we have enough movement data.
+                                 </StyledText>
+                              </StyledView>
+                           ) : (
+                              <StyledView className="flex-row justify-between items-end">
+                                 {dailyCalories.map((data, idx) => {
+                                    const barHeight = maxDailyCalories
+                                       ? Math.max((data.calories / maxDailyCalories) * chartHeight, 6)
+                                       : 6;
+                                    return (
+                                       <Animated.View 
+                                          key={data.label} 
+                                          className="items-center mx-[3px]"
+                                          entering={FadeInUp.duration(500).delay(idx * 80)}
+                                       >
+                                          <StyledText className="text-xs font-bold text-text-light dark:text-text-dark mb-1">
+                                             {data.calories}
+                                          </StyledText>
+                                          <LinearGradient
+                                             colors={['#00C853', '#7B68EE']}
+                                             start={{ x: 0, y: 1 }}
+                                             end={{ x: 0, y: 0 }}
+                                             style={{ 
+                                                width: 24, 
+                                                height: barHeight,
+                                                borderTopLeftRadius: 8,
+                                                borderTopRightRadius: 8,
+                                             }}
+                                          />
+                                          <StyledText className="mt-1 text-[10px] text-subtle-light dark:text-subtle-dark font-semibold">
+                                             {data.label}
+                                          </StyledText>
+                                       </Animated.View>
+                                    );
+                                 })}
+                              </StyledView>
+                           )}
+                        </StyledView>
+                     </StyledView>
+                  </Animated.View>
                </Animated.View>
 
                <Animated.View entering={FadeInDown.duration(600).delay(340)} className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl">
                   <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark tracking-tight">
                      Route History
                   </StyledText>
-                  <StyledText className="mt-2 text-sm text-subtle-light dark:text-subtle-dark leading-relaxed">
-                     Relive the shapes of your recent walks. Each card captures the polygon you covered and your total distance for that day.
-                  </StyledText>
-
-                  <StyledView className="mt-6">
-                     {isLoadingRouteHistory ? (
-                        <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
-                           Loading route history...
-                        </StyledText>
-                     ) : routeHistory.length === 0 ? (
-                        <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
-                           Start logging walks to see your route history visualized here.
-                        </StyledText>
-                     ) : (
-                        <Animated.ScrollView
-                           horizontal
-                           showsHorizontalScrollIndicator={false}
-                           contentContainerStyle={{ paddingRight: 24 }}
-                        >
-                           {routeHistory.map((entry, idx) => (
-                              <Animated.View
-                                 key={entry.id}
-                                 entering={FadeInUp.duration(500).delay(idx * 80)}
-                                 style={{ marginRight: idx === routeHistory.length - 1 ? 0 : 16 }}
-                              >
-                                 <RouteHistoryCard entry={entry} />
-                              </Animated.View>
-                           ))}
-                        </Animated.ScrollView>
-                     )}
+                  <StyledView className="mt-6 items-center py-6">
+                     <StyledText className="text-lg font-semibold text-text-light dark:text-text-dark">
+                        Comming Soon
+                     </StyledText>
+                     <StyledText className="mt-2 text-sm text-subtle-light dark:text-subtle-dark">
+                        {isLoadingRouteHistory ? "Comming Soon" : `Comming Soon${routeHistory.length ? ` (${routeHistory.length})` : ""}`}
+                     </StyledText>
                   </StyledView>
                </Animated.View>
 

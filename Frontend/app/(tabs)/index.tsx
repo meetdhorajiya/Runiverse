@@ -720,7 +720,7 @@ export default function Index() {
                                  }}>
                                     {formatDistance(totalTodaySteps)}
                                  </StyledText>
-                                 <StyledText className="text-white/70 text-xs mt-1 font-medium">Distance Covered</StyledText>
+                                 <StyledText className="text-white/70 text-xs mt-1 font-medium">Km</StyledText>
                               </StyledView>
                               
                               {/* Lifetime Steps Card */}
@@ -742,43 +742,6 @@ export default function Index() {
                            </StyledView>
                         </StyledView>
                      </LinearGradient>
-                  </StyledView>
-               </Animated.View>
-
-               {/* Redesigned Stats Layout - Mixed Shapes & Orientations */}
-               <Animated.View style={statsCardsStyle} className="mt-6">
-                  {/* Top Row - Steps (Large, Full Width, Horizontal) */}
-                  {/* <StyledView style={{
-                     shadowColor: '#6A5ACD',
-                     shadowOffset: { width: 0, height: 6 },
-                     shadowOpacity: 0.25,
-                     shadowRadius: 12,
-                     elevation: 8,
-                     marginBottom: 16,
-                  }}>
-                     <StatCard icon={Footprints} label="Steps" value={totalTodaySteps.toString()} index={0} variant="horizontal" />
-                  </StyledView> */}
-
-                  {/* Bottom Row - Distance & Calories (Side by Side, Vertical Cards) */}
-                  <StyledView className="flex-row space-x-4">
-                     <StyledView className="flex-1" style={{
-                        shadowColor: '#00C853',
-                        shadowOffset: { width: 0, height: 6 },
-                        shadowOpacity: 0.25,
-                        shadowRadius: 12,
-                        elevation: 8,
-                     }}>
-                        <StatCard icon={MapPin} label="Distance" value={`${formatDistance(totalTodaySteps)} km`} index={1} variant="vertical" />
-                     </StyledView>
-                     <StyledView className="flex-1" style={{
-                        shadowColor: '#FF6B6B',
-                        shadowOffset: { width: 0, height: 6 },
-                        shadowOpacity: 0.25,
-                        shadowRadius: 12,
-                        elevation: 8,
-                     }}>
-                        <StatCard icon={Flame} label="Calories" value={estimateCalories(totalTodaySteps).toString()} index={2} variant="vertical" />
-                     </StyledView>
                   </StyledView>
                </Animated.View>
 

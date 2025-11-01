@@ -12,8 +12,45 @@ import {
   Badge,
   Group,
 } from "./types";
-import { mockChallenges, mockBadges } from "@/services/challengeService";
 import { mockGroups } from "@/services/leaderboardService";
+
+const DEFAULT_CHALLENGES: Challenge[] = [
+  {
+    id: "warmup-steps",
+    title: "Warmup Steps",
+    description: "Log 2,000 steps to kickstart your streak.",
+    goal: 2000,
+    currentProgress: 0,
+    type: "steps",
+    isCompleted: false,
+  },
+  {
+    id: "distance-scout",
+    title: "Distance Scout",
+    description: "Cover 1.5 km exploring your neighborhood.",
+    goal: 1500,
+    currentProgress: 0,
+    type: "distance",
+    isCompleted: false,
+  },
+];
+
+const DEFAULT_BADGES: Badge[] = [
+  {
+    id: "day-one",
+    name: "Day One",
+    description: "Completed your first Runiverse session.",
+    earnedOn: null,
+    icon: "star",
+  },
+  {
+    id: "scout",
+    name: "Territory Scout",
+    description: "Claimed a territory for the first time.",
+    earnedOn: null,
+    icon: "map",
+  },
+];
 // import { initialGrid } from "@/services/territoryEngine";
 
 // Define state slices
@@ -64,14 +101,8 @@ export const useStore = create<
   persist(
     (set, get) => ({
       // User Slice
-      user: {
-        id: "user-1",
-        username: "PlayerOne",
-        avatarUrl: "https://i.pravatar.cc/150?u=user-1",
-        groupId: "group-1",
-        city: "Gandhinagar",
-      },
-      group: mockGroups[0],
+      user: null,
+      group: null,
       setUser: (user) => set({ user }),
       joinGroup: (groupId) => {
         const group = mockGroups.find((g) => g.id === groupId) || null;
@@ -177,8 +208,8 @@ updateCellInfluence: (cellId, groupId, influence) => {
 
 
       // Challenge Slice
-      challenges: mockChallenges,
-      badges: mockBadges,
+  challenges: DEFAULT_CHALLENGES,
+  badges: DEFAULT_BADGES,
       updateChallengeProgress: (type, value) => {
         set((state) => {
           const updatedChallenges = state.challenges.map((c) => {

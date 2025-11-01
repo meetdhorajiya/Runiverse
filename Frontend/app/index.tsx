@@ -1,4 +1,4 @@
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
@@ -6,10 +6,10 @@ import { useTheme } from '../context/ThemeContext';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef } from 'react';
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect } from "react";
 import axios from "axios";
-import Animated, { FadeInDown, FadeInUp, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { authService } from "@/services/AuthService";
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 // Provide a fallback demo video URL if env not set. Replace with your own.
 // const VIDEO_URL = process.env.EXPO_PUBLIC_WELCOME_VIDEO_URL || 'https://static-assets.mapbox.com/www/videos/mobile-maps-sdk/section_hero/video@720p.webm';
@@ -22,21 +22,27 @@ export default function WelcomeScreen() {
   const router = useRouter();
 
   useEffect(() => {
+    let isMounted = true;
+
     const checkAuth = async () => {
       try {
-        const token = await AsyncStorage.getItem("token");
-        if (token) {
-          // ✅ Set axios header globally
+        await authService.hydrate();
+        const token = authService.getToken();
+        if (token && isMounted) {
           axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-          // ✅ Redirect user straight to main app
           router.replace("/(tabs)");
         }
       } catch (err) {
         console.warn("Auth check failed:", err);
       }
     };
+
     checkAuth();
-  }, []);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
   return (
     <SafeAreaView className={isDarkMode ? 'flex-1 bg-background-dark' : 'flex-1 bg-black'}>

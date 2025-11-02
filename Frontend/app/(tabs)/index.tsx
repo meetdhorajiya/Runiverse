@@ -1,24 +1,26 @@
 // Index.tsx
 import { useState, useEffect, useRef } from "react";
-import { Platform, PermissionsAndroid, Dimensions } from "react-native";
+import { Platform, PermissionsAndroid } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Pedometer } from "expo-sensors";
 import { StyledPressable, StyledText, StyledView } from "@/components/Styled";
-import { StatCard } from "@/components/StatCard";
 import { Footprints, MapPin, Flame, Lightbulb } from "lucide-react-native";
 import { useStore } from "@/store/useStore";
 import Animated, { 
+   Extrapolate,
    FadeInDown, 
    FadeInUp, 
+   Easing,
+   cancelAnimation,
+   interpolate,
+   runOnJS,
+   useAnimatedScrollHandler,
    useAnimatedStyle, 
    useSharedValue, 
-   withSpring, 
-   withTiming, 
-   interpolate,
-   useAnimatedScrollHandler,
-   Extrapolate,
-   runOnJS
+   withRepeat, 
+   withSequence,
+   withTiming
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -75,7 +77,6 @@ const getDayKey = (date: Date) => date.toISOString().split("T")[0];
 
 const HEADER_HEIGHT = 280;
 const STICKY_HEADER_HEIGHT = 70;
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function Index() {
    const user = useStore((s) => s.user);
@@ -108,20 +109,36 @@ export default function Index() {
    
    // Animated border pulse effect
    const borderPulse = useSharedValue(0);
+   const ctaPulse = useSharedValue(1);
    
    useEffect(() => {
-      // Continuous pulsing animation for borders
-      const animateBorder = () => {
-         borderPulse.value = withTiming(1, { duration: 1500 }, () => {
-            borderPulse.value = withTiming(0, { duration: 1500 });
-         });
+      borderPulse.value = withRepeat(
+         withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.quad) }),
+         -1,
+         true,
+      );
+
+      return () => {
+         cancelAnimation(borderPulse);
+         borderPulse.value = 0;
       };
-      
-      animateBorder();
-      const interval = setInterval(animateBorder, 3000);
-      
-      return () => clearInterval(interval);
-   }, []);
+   }, [borderPulse]);
+
+   useEffect(() => {
+      ctaPulse.value = withRepeat(
+         withSequence(
+            withTiming(1.045, { duration: 900, easing: Easing.inOut(Easing.quad) }),
+            withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) })
+         ),
+         -1,
+         false,
+      );
+
+      return () => {
+         cancelAnimation(ctaPulse);
+         ctaPulse.value = 1;
+      };
+   }, [ctaPulse]);
 
    const scrollHandler = useAnimatedScrollHandler({
       onScroll: (event) => {
@@ -536,31 +553,44 @@ export default function Index() {
    });
 
    // Animated styles for main stats cards
-   const statsCardsStyle = useAnimatedStyle(() => {
+   const heroCardStyle = useAnimatedStyle(() => {
       const scale = interpolate(
          scrollY.value,
          [0, HEADER_HEIGHT - STICKY_HEADER_HEIGHT],
-         [1, 0.7],
+         [1, 0.82],
          Extrapolate.CLAMP
       );
 
       const translateY = interpolate(
          scrollY.value,
          [0, HEADER_HEIGHT - STICKY_HEADER_HEIGHT],
-         [0, -50],
+         [0, -42],
          Extrapolate.CLAMP
       );
 
       const opacity = interpolate(
          scrollY.value,
          [0, HEADER_HEIGHT - STICKY_HEADER_HEIGHT - 50, HEADER_HEIGHT - STICKY_HEADER_HEIGHT],
-         [1, 0.5, 0],
+         [1, 0.58, 0.2],
          Extrapolate.CLAMP
       );
 
+      const shadowStrength = interpolate(borderPulse.value, [0, 1], [0.12, 0.32]);
+
       return {
+         opacity,
+         transform: [
+            { translateY },
+            { scale },
+         ],
+         shadowOpacity: shadowStrength,
       };
    });
+
+   const ctaAnimatedStyle = useAnimatedStyle(() => ({
+      transform: [{ scale: ctaPulse.value }],
+      shadowOpacity: interpolate(ctaPulse.value, [1, 1.045], [0.18, 0.32], Extrapolate.CLAMP),
+   }));
 
    return (
       <SafeAreaView
@@ -633,20 +663,25 @@ export default function Index() {
             contentInsetAdjustmentBehavior="automatic"
          >
             <StyledView className="px-6 pt-6">
-               <Animated.View entering={FadeInUp.duration(600).delay(100)}>
-                  <StyledView className="rounded-3xl shadow-2xl" style={{ 
-                     shadowColor: '#6A5ACD',
-                     shadowOffset: { width: 0, height: 8 },
-                     shadowOpacity: 0.3,
-                     shadowRadius: 16,
-                     elevation: 12,
-                  }}>
-                     <LinearGradient
-                        colors={['#6A5ACD', '#7B68EE', '#00C853']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        className="rounded-3xl p-6 overflow-hidden"
-                     >
+               <Animated.View
+                  entering={FadeInUp.duration(600).delay(100)}
+                  className="rounded-3xl shadow-2xl"
+                  style={[
+                     heroCardStyle,
+                     {
+                        shadowColor: '#6A5ACD',
+                        shadowOffset: { width: 0, height: 8 },
+                        shadowRadius: 18,
+                        elevation: 14,
+                     },
+                  ]}
+               >
+                  <LinearGradient
+                     colors={['#6A5ACD', '#7B68EE', '#00C853']}
+                     start={{ x: 0, y: 0 }}
+                     end={{ x: 1, y: 1 }}
+                     className="rounded-3xl p-6 overflow-hidden"
+                  >
                         {/* Content */}
                         <StyledView style={{ position: 'relative', zIndex: 1 }}>
                            <StyledView className="flex-row items-center mb-2">
@@ -741,11 +776,14 @@ export default function Index() {
                               </StyledView>
                            </StyledView>
                         </StyledView>
-                     </LinearGradient>
-                  </StyledView>
-               </Animated.View>
+            </LinearGradient>
+         </Animated.View>
 
-               <Animated.View entering={FadeInDown.duration(600).delay(300)} className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl">
+               <Animated.View
+                  entering={FadeInDown.duration(600).delay(300)}
+                  className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl"
+                  style={{ marginBottom: 32 }}
+               >
                   <StyledView>
                      <StyledText className="text-xs uppercase tracking-widest text-subtle-light dark:text-subtle-dark font-medium">
                         Calories Burned Today
@@ -759,7 +797,7 @@ export default function Index() {
                      <StyledView className="mt-6">
                         <StyledView className="flex-row justify-between items-center">
                            <StyledText className="text-lg font-semibold text-text-light dark:text-text-dark">
-                              Today's Calories by Hour
+                              Today&apos;s Calories by Hour
                            </StyledText>
                            <StyledText className="text-xs text-subtle-light dark:text-subtle-dark">
                               Updated automatically
@@ -828,7 +866,7 @@ export default function Index() {
                            {dailyCalories.length === 0 ? (
                               <StyledView className="py-6 items-center">
                                  <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
-                                    We'll chart your calories once we have enough movement data.
+                                    We&apos;ll chart your calories once we have enough movement data.
                                  </StyledText>
                               </StyledView>
                            ) : (
@@ -889,7 +927,7 @@ export default function Index() {
                      Session Controls
                   </StyledText>
                   <StyledText className="mt-2 text-sm text-subtle-light dark:text-subtle-dark leading-relaxed">
-                     Tap start to track a focused walk. We'll keep counting even if you leave the screen.
+                     Tap start to track a focused walk. We&apos;ll keep counting even if you leave the screen.
                   </StyledText>
 
                   <StyledView className="mt-6 flex-row justify-between">
@@ -914,20 +952,33 @@ export default function Index() {
                   </StyledView>
 
                   <StyledView className="mt-8 items-center">
-                     <StyledPressable
-                        className={`w-48 h-48 rounded-full items-center justify-center shadow-2xl active:scale-95 ${
-                           isActive ? "bg-danger" : "bg-primary"
-                        }`}
-                        onPress={handleToggleWalk}
-                        style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.95 : 1 }] }]}
+                     <Animated.View
+                        className="rounded-full"
+                        style={[
+                           ctaAnimatedStyle,
+                           {
+                              shadowColor: isActive ? '#FF6B6B' : '#6A5ACD',
+                              shadowOffset: { width: 0, height: 12 },
+                              shadowRadius: 26,
+                              elevation: 18,
+                           },
+                        ]}
                      >
-                        <StyledText className="text-white text-4xl font-bold tracking-wider">
-                           {isActive ? "STOP" : "START"}
-                        </StyledText>
-                        <StyledText className="text-white/80 text-sm mt-2 uppercase tracking-widest">
-                           {isActive ? "Active" : "Ready"}
-                        </StyledText>
-                     </StyledPressable>
+                        <StyledPressable
+                           className={`w-48 h-48 rounded-full items-center justify-center shadow-2xl active:scale-95 ${
+                              isActive ? "bg-danger" : "bg-primary"
+                           }`}
+                           onPress={handleToggleWalk}
+                           style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.95 : 1 }] }]}
+                        >
+                           <StyledText className="text-white text-4xl font-bold tracking-wider">
+                              {isActive ? "STOP" : "START"}
+                           </StyledText>
+                           <StyledText className="text-white/80 text-sm mt-2 uppercase tracking-widest">
+                              {isActive ? "Active" : "Ready"}
+                           </StyledText>
+                        </StyledPressable>
+                     </Animated.View>
                   </StyledView>
 
                   <StyledView className="mt-6 border-2 border-dashed border-primary/20 rounded-2xl px-4 py-4 bg-primary/5">

@@ -80,7 +80,7 @@ export default function PrivacySettings() {
               <View className="flex-row justify-between items-center">
                 <View className="flex-1 mr-4">
                   <Text className={`text-base font-medium ${textClass}`}>Show Activity Status</Text>
-                  <Text className={`text-sm mt-1 ${subtleText}`}>Let others see when you're active</Text>
+                  <Text className={`text-sm mt-1 ${subtleText}`}>Let others see when you&apos;re active</Text>
                 </View>
                 <Switch 
                   value={showActivity} 

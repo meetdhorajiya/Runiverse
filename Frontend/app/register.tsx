@@ -5,7 +5,7 @@ import { useRouter, Link } from 'expo-router';
 import CustomInput from '../components/CustomInput';
 import { authService } from '../services/AuthService';
 import { useStore } from '@/store/useStore';
-import profileService from '@/services/profileService';
+import { profileService } from '@/services/profileService';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 export default function RegisterScreen() {

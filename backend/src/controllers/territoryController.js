@@ -12,10 +12,11 @@ const isSamePoint = (a, b, tolerance = 1e-6) => {
   return Math.abs(a[0] - b[0]) <= tolerance && Math.abs(a[1] - b[1]) <= tolerance;
 };
 
-const dedupeSequentialPoints = (ring) => {
+const sanitizeRing = (ring) => {
   if (!Array.isArray(ring)) {
-    return [];
+    return null;
   }
+
   const cleaned = [];
   for (let i = 0; i < ring.length; i += 1) {
     const point = ring[i];
@@ -27,16 +28,23 @@ const dedupeSequentialPoints = (ring) => {
     if (lon === null || lat === null) {
       continue;
     }
-    if (!cleaned.length) {
-      cleaned.push([lon, lat]);
-      continue;
-    }
-    const prev = cleaned[cleaned.length - 1];
-    if (prev[0] === lon && prev[1] === lat) {
-      continue;
-    }
     cleaned.push([lon, lat]);
   }
+
+  if (cleaned.length < 3) {
+    return null;
+  }
+
+  const first = cleaned[0];
+  const last = cleaned[cleaned.length - 1];
+  if (!isSamePoint(first, last)) {
+    cleaned.push([first[0], first[1]]);
+  }
+
+  if (cleaned.length < 4) {
+    return null;
+  }
+
   return cleaned;
 };
 
@@ -46,18 +54,7 @@ const normalizePolygonCoordinates = (raw) => {
   }
 
   const rings = raw
-    .map((ring) => dedupeSequentialPoints(ring))
-    .map((ring) => {
-      if (ring.length < 3) {
-        return null;
-      }
-      const first = ring[0];
-      const last = ring[ring.length - 1];
-      const closedRing = isSamePoint(first, last)
-        ? [...ring]
-        : [...ring, [first[0], first[1]]];
-      return closedRing.length >= 4 ? closedRing : null;
-    })
+    .map((ring) => sanitizeRing(ring))
     .filter(Boolean);
 
   if (!rings.length) {

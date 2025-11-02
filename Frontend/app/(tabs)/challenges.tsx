@@ -1,14 +1,11 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { View, Text, Pressable, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { useStore } from "@/store/useStore";
-import axios from 'axios';
-import ConfettiCannon from "react-native-confetti-cannon";
 import Toast from "react-native-toast-message";
-import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
-import { useProgressAnimation } from "@/hooks/useProgressAnimation";
+import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withTiming, runOnJS } from "react-native-reanimated";
 import { LinearGradient } from 'expo-linear-gradient';
 
 interface Task {
@@ -35,7 +32,6 @@ const ChallengeCard = ({
 }: any) => {
   const [joined, setJoined] = useState(false);
   const [progress, setProgress] = useState(0);
-  const confettiRef = useRef<any>(null);
   const progressWidth = useSharedValue(0);
 
   const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
@@ -52,10 +48,13 @@ const ChallengeCard = ({
     width: `${progressWidth.value}%`,
   }));
 
+  const finishProgress = useCallback(() => {
+    setProgress(100);
+  }, []);
+
   const handleJoin = () => {
     if (joined) return;
     setJoined(true);
-    confettiRef.current?.start?.();
     Toast.show({
       type: "success",
       text1: "Challenge Joined 🎯",
@@ -63,8 +62,11 @@ const ChallengeCard = ({
       position: "bottom",
     });
 
-    progressWidth.value = withTiming(100, { duration: 4000 }, () => {
-      setProgress(100);
+    progressWidth.value = withTiming(100, { duration: 4000 }, (finished) => {
+      'worklet';
+      if (finished) {
+        runOnJS(finishProgress)();
+      }
     });
   };
 
@@ -121,13 +123,6 @@ const ChallengeCard = ({
         </View>
       )}
 
-      <ConfettiCannon
-        ref={confettiRef}
-        count={50}
-        origin={{ x: 150, y: 0 }}
-        fadeOut
-        autoStart={false}
-      />
     </Animated.View>
   );
 };
@@ -147,7 +142,7 @@ const ChallengesScreen = () => {
   // 🧠 Replace with your stored token (from login)
 
   // Fetch user’s tasks from backend
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`${API_BASE_URL}/tasks`, {
@@ -162,7 +157,7 @@ const ChallengesScreen = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   // Generate AI-based new challenge
   const generateAITask = async () => {
@@ -191,7 +186,7 @@ const ChallengesScreen = () => {
 
   useEffect(() => {
     fetchTasks();
-  }, []);
+  }, [fetchTasks]);
 
   return (
     <SafeAreaView className={`flex-1 ${bgClass}`}>

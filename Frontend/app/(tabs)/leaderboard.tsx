@@ -1,12 +1,140 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, FlatList, Image, ActivityIndicator } from "react-native";
+import { View, Text, ActivityIndicator, Image, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { useStore } from "@/store/useStore";
 import { leaderboardService, LeaderboardEntry } from "@/services/leaderboardService";
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  Easing,
+  FadeInDown,
+  FadeInUp,
+  cancelAnimation,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
+
+type LeaderboardRowProps = {
+  item: LeaderboardEntry;
+  index: number;
+  isDarkMode: boolean;
+  textClass: string;
+  cardBgClass: string;
+};
+
+const LeaderboardRow = ({ item, index, isDarkMode, textClass, cardBgClass }: LeaderboardRowProps) => {
+  const pulse = useSharedValue(0);
+  const rank = index + 1;
+
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
+        withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.quad) })
+      ),
+      -1,
+      false
+    );
+
+    return () => {
+      cancelAnimation(pulse);
+      pulse.value = 0;
+    };
+  }, [pulse]);
+
+  const cardStyle = useAnimatedStyle(() => ({
+    shadowOpacity: interpolate(pulse.value, [0, 1], [0.08, 0.2]),
+    transform: [
+      {
+        translateY: interpolate(pulse.value, [0, 1], [0, -2]),
+      },
+      {
+        scale: interpolate(pulse.value, [0, 1], [1, 1.01]),
+      },
+    ],
+  }));
+
+  const highlightStyle = useAnimatedStyle(() => ({
+    opacity: rank <= 3 ? interpolate(pulse.value, [0, 1], [0.25, 0.6]) : 0,
+  }));
+  let rankColor = isDarkMode ? "text-gray-400" : "text-gray-600";
+  let rankBgColor = isDarkMode ? "bg-gray-700" : "bg-gray-200";
+  let rankIcon = "🏅";
+
+  if (rank === 1) {
+    rankColor = "text-yellow-400";
+    rankBgColor = "bg-yellow-500/10";
+    rankIcon = "🥇";
+  }
+  if (rank === 2) {
+    rankColor = "text-gray-300";
+    rankBgColor = "bg-gray-400/10";
+    rankIcon = "🥈";
+  }
+  if (rank === 3) {
+    rankColor = "text-yellow-600";
+    rankBgColor = "bg-yellow-600/10";
+    rankIcon = "🥉";
+  }
+
+  const avatarSource = item.avatarUrl
+    ? { uri: item.avatarUrl }
+    : { uri: "https://i.pravatar.cc/150?u=runiverse-placeholder" };
+  const areaLabel = `${Math.round(item.totalArea).toLocaleString()} m²`;
+
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(400).delay(index * 50)}
+      className={`rounded-3xl mb-3 border border-gray-200/50 dark:border-gray-700/50 overflow-hidden`}
+      style={[cardStyle]}
+    >
+      {rank <= 3 && (
+        <Animated.View style={[styles.highlightWrap, highlightStyle]}>
+          <LinearGradient
+            colors={["rgba(250, 204, 21, 0.4)", "rgba(96, 165, 250, 0.2)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+      )}
+
+      <View className={`flex-row items-center p-5 ${cardBgClass}`}>
+        <View className={`${rankBgColor} w-12 h-12 rounded-2xl items-center justify-center mr-3`}>
+          {rank <= 3 ? (
+            <Text className="text-2xl">{rankIcon}</Text>
+          ) : (
+            <Text className={`text-lg font-bold ${rankColor}`}>#{rank}</Text>
+          )}
+        </View>
+        <Image
+          source={avatarSource}
+          className="w-14 h-14 rounded-full mr-4 border-2 border-primary/20 shadow-sm"
+        />
+        <View className="flex-1">
+          <Text className={`text-lg font-bold ${textClass} tracking-tight`}>{item.username}</Text>
+          <View className="flex-row items-center mt-1">
+            <FontAwesome5 name="map-marked-alt" size={12} color="#00C853" />
+            <Text className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"} ml-1`}>
+              {areaLabel}
+            </Text>
+          </View>
+        </View>
+        <View className="items-end">
+          <Text className={`text-base font-bold ${textClass}`}>
+            {Math.round(item.steps).toLocaleString()}
+          </Text>
+          <Text className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>steps</Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
+};
 
 const LeaderboardScreen = () => {
   const { theme } = useTheme();
@@ -65,61 +193,15 @@ const LeaderboardScreen = () => {
   const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
   const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white";
 
-  const renderItem = ({ item, index }: { item: LeaderboardEntry; index: number }) => {
-    const rank = index + 1;
-    let rankColor = isDarkMode ? "text-gray-400" : "text-gray-600";
-    let rankBgColor = isDarkMode ? "bg-gray-700" : "bg-gray-200";
-    let rankIcon = "🏅";
-    
-    if (rank === 1) {
-      rankColor = "text-yellow-400";
-      rankBgColor = "bg-yellow-500/10";
-      rankIcon = "🥇";
-    }
-    if (rank === 2) {
-      rankColor = "text-gray-300";
-      rankBgColor = "bg-gray-400/10";
-      rankIcon = "🥈";
-    }
-    if (rank === 3) {
-      rankColor = "text-yellow-600";
-      rankBgColor = "bg-yellow-600/10";
-      rankIcon = "🥉";
-    }
-
-    const avatarSource = item.avatarUrl
-      ? { uri: item.avatarUrl }
-      : { uri: "https://i.pravatar.cc/150?u=runiverse-placeholder" };
-    const areaLabel = `${Math.round(item.totalArea).toLocaleString()} m²`;
-    const stepsLabel = `${Math.round(item.steps).toLocaleString()} steps`;
-
-    return (
-      <Animated.View 
-        entering={FadeInDown.duration(400).delay(index * 50)}
-        className={`flex-row items-center p-5 rounded-3xl mb-3 ${cardBgClass} shadow-md border border-gray-200/50 dark:border-gray-700/50`}
-      >
-        <View className={`${rankBgColor} w-12 h-12 rounded-2xl items-center justify-center mr-3`}>
-          {rank <= 3 ? (
-            <Text className="text-2xl">{rankIcon}</Text>
-          ) : (
-            <Text className={`text-lg font-bold ${rankColor}`}>#{rank}</Text>
-          )}
-        </View>
-        <Image source={avatarSource} className="w-14 h-14 rounded-full mr-4 border-2 border-primary/20 shadow-sm" />
-        <View className="flex-1">
-          <Text className={`text-lg font-bold ${textClass} tracking-tight`}>{item.username}</Text>
-          <View className="flex-row items-center mt-1">
-            <FontAwesome5 name="map-marked-alt" size={12} color="#00C853" />
-            <Text className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"} ml-1`}>{areaLabel}</Text>
-          </View>
-        </View>
-        <View className="items-end">
-          <Text className={`text-base font-bold ${textClass}`}>{Math.round(item.steps).toLocaleString()}</Text>
-          <Text className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>steps</Text>
-        </View>
-      </Animated.View>
-    );
-  };
+  const renderItem = ({ item, index }: { item: LeaderboardEntry; index: number }) => (
+    <LeaderboardRow
+      item={item}
+      index={index}
+      isDarkMode={isDarkMode}
+      textClass={textClass}
+      cardBgClass={cardBgClass}
+    />
+  );
 
   return (
     <SafeAreaView className={`flex-1 ${bgClass}`}>
@@ -143,7 +225,7 @@ const LeaderboardScreen = () => {
           <ActivityIndicator size="large" color={isDarkMode ? "#60A5FA" : "#2563EB"} />
         </View>
       ) : (
-        <FlatList
+  <Animated.FlatList<LeaderboardEntry>
           data={entries}
           renderItem={renderItem}
           keyExtractor={(item) => item.userId}
@@ -167,3 +249,9 @@ const LeaderboardScreen = () => {
 };
 
 export default LeaderboardScreen;
+
+const styles = StyleSheet.create({
+  highlightWrap: {
+    ...StyleSheet.absoluteFillObject,
+  },
+});

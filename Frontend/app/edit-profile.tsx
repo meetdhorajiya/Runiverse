@@ -7,7 +7,6 @@ import CustomInput from '@/components/CustomInput';
 import { useStore } from '@/store/useStore';
 import { Link, useRouter } from 'expo-router';
 import { profileService } from '@/services/profileService';
-import { authService } from '@/services/AuthService';
 import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 

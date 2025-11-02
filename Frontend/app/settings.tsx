@@ -13,7 +13,6 @@ export default function Settings() {
   const isDarkMode = theme === "dark";
 
   const bgClass = isDarkMode ? "bg-background-dark" : "bg-gray-100";
-  const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
   const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white";
 
   const sections = [

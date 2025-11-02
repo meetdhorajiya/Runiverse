@@ -476,7 +476,6 @@ export default function MapScreen() {
                {territories.map((territory, index) => {
                   const featureKey = territory.properties?.id ?? territory.properties?.localId ?? index;
                   const ownerId = territory.properties?.owner?._id || territory.properties?.owner?.id;
-                  const ownerName = territory.properties?.owner?.username || 'Unknown';
                   const isCurrentUser = ownerId === user?.id;
                   const colors = getUserColor(ownerId, isCurrentUser);
                   

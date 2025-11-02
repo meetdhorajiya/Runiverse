@@ -7,7 +7,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { authService } from '../services/AuthService';
 import { useStore } from '@/store/useStore';
 import { profileService } from '@/services/profileService';
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
@@ -160,7 +159,7 @@ const LoginScreen = () => {
           </Pressable>
 
           <View className="flex-row justify-center mt-8">
-            <Text className={`text-base ${secondaryTextClass}`}>Don't have an account? </Text>
+            <Text className={`text-base ${secondaryTextClass}`}>Don&apos;t have an account? </Text>
             <Link href="/register">
               <Text className="text-primary-green font-bold text-base">Sign Up</Text>
             </Link>

@@ -27,6 +27,14 @@ type LocalRouteSnapshot = {
    startedAt: number | null;
 };
 
+type TerritoryColorOption = {
+   key: string;
+   label: string;
+   fill: string;
+   stroke: string;
+   fillOpacity: number;
+};
+
 const ROUTE_STORAGE_KEY = "runiverse:map:last-route";
 
 Mapbox.setAccessToken(
@@ -92,9 +100,9 @@ const getUserColor = (userId: string | undefined, isCurrentUser: boolean): { fil
    const lightness = 50 + (Math.abs(hash >> 8) % 15); // 50-65%
    
    return {
-      fill: `hsla(${hue}, ${saturation}%, ${lightness}%, 0.4)`,
-      stroke: `hsl(${hue}, ${saturation}%, ${Math.max(lightness - 20, 30)}%)`,
-      fillOpacity: 0.4
+   fill: `hsla(${hue}, ${saturation}%, ${lightness}%, 0.55)`,
+   stroke: `hsl(${hue}, ${saturation}%, ${Math.max(lightness - 20, 30)}%)`,
+   fillOpacity: 0.55
    };
 };
 
@@ -130,6 +138,50 @@ export default function MapScreen() {
          minSegmentSamples: 5,
       });
    }
+
+   const userColorOptions = useMemo<TerritoryColorOption[]>(
+      () => [
+         {
+            key: "emerald",
+            label: "Emerald",
+            fill: "rgba(34, 197, 94, 0.6)",
+            stroke: "#22C55E",
+            fillOpacity: 0.6,
+         },
+         {
+            key: "sky",
+            label: "Sky",
+            fill: "rgba(59, 130, 246, 0.55)",
+            stroke: "#3B82F6",
+            fillOpacity: 0.55,
+         },
+         {
+            key: "violet",
+            label: "Violet",
+            fill: "rgba(139, 92, 246, 0.58)",
+            stroke: "#8B5CF6",
+            fillOpacity: 0.58,
+         },
+         {
+            key: "rose",
+            label: "Rose",
+            fill: "rgba(244, 63, 94, 0.56)",
+            stroke: "#F43F5E",
+            fillOpacity: 0.56,
+         },
+      ],
+      []
+   );
+
+   const defaultUserColor = userColorOptions[0] ?? {
+      key: "emerald",
+      label: "Emerald",
+      fill: "rgba(34, 197, 94, 0.45)",
+      stroke: "#22C55E",
+      fillOpacity: 0.45,
+   };
+
+   const [userTerritoryColor, setUserTerritoryColor] = useState<TerritoryColorOption>(() => defaultUserColor);
 
    const updateOwnedTerritories = useCallback(
       (updater: (prev: TerritoryFeature[]) => TerritoryFeature[]) => {
@@ -410,6 +462,34 @@ export default function MapScreen() {
    const toggleBorder = isDark ? 'rgba(148,163,184,0.4)' : 'rgba(148,163,184,0.6)';
    const toggleActiveBackground = isDark ? '#0EA5E9' : '#38BDF8';
    const toggleTextColor = isDark ? '#F8FAFC' : '#0F172A';
+   const territoryLegend = useMemo(() => {
+      const entries = new Map<string, { id: string; name: string; swatch: string; isCurrent: boolean }>();
+
+      combinedTerritories.forEach((territory) => {
+         const owner = territory.properties?.owner;
+         const ownerId = owner?._id || owner?.id || 'unknown';
+         const legendKey = ownerId || `unknown-${entries.size}`;
+         if (entries.has(legendKey)) {
+            return;
+         }
+
+         const isCurrentOwner = ownerId !== 'unknown' && ownerId === user?.id;
+         const displayName = isCurrentOwner
+            ? 'You'
+            : owner?.username || owner?.displayName || owner?.name || 'Unknown Owner';
+         const palette = getUserColor(ownerId === 'unknown' ? undefined : ownerId, isCurrentOwner);
+         const swatchColor = isCurrentOwner ? userTerritoryColor.stroke : palette.stroke;
+
+         entries.set(legendKey, {
+            id: legendKey,
+            name: displayName,
+            swatch: swatchColor,
+            isCurrent: isCurrentOwner,
+         });
+      });
+
+      return Array.from(entries.values());
+   }, [combinedTerritories, user?.id, userTerritoryColor.stroke]);
 
    return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background.primary }} edges={['bottom', 'left', 'right']}>
@@ -510,21 +590,24 @@ export default function MapScreen() {
                   const ownerId = territory.properties?.owner?._id || territory.properties?.owner?.id;
                   const isCurrentUser = ownerId === user?.id;
                   const colors = getUserColor(ownerId, isCurrentUser);
+                  const fillColor = isCurrentUser ? userTerritoryColor.fill : colors.fill;
+                  const strokeColor = isCurrentUser ? userTerritoryColor.stroke : colors.stroke;
+                  const fillOpacity = isCurrentUser ? userTerritoryColor.fillOpacity : colors.fillOpacity;
                   
                   return (
                      <ShapeSource key={`territory-${featureKey}`} id={`territory-${featureKey}`} shape={territory}>
                         <FillLayer
                            id={`territory-fill-${featureKey}`}
                            style={{
-                              fillColor: colors.fill,
-                              fillOutlineColor: colors.stroke,
-                              fillOpacity: colors.fillOpacity,
+                              fillColor,
+                              fillOutlineColor: strokeColor,
+                              fillOpacity,
                            }}
                         />
                         <LineLayer
                            id={`territory-line-${featureKey}`}
                            style={{
-                              lineColor: colors.stroke,
+                              lineColor: strokeColor,
                               lineWidth: isCurrentUser ? 4 : 3,
                               lineOpacity: isCurrentUser ? 1.0 : 0.8,
                            }}
@@ -566,6 +649,65 @@ export default function MapScreen() {
                   <Text style={[styles.toggleText, { color: toggleTextColor }]}>{showBuildings ? 'Hide 3D' : 'Show 3D'}</Text>
                </TouchableOpacity>
             </View>
+
+            {territoryLegend.length > 0 && (
+               <View
+                  style={[
+                     styles.legendContainer,
+                     {
+                        bottom: insets.bottom + 80,
+                        left: insets.left + 12,
+                        backgroundColor: isDark ? 'rgba(17, 24, 39, 0.78)' : 'rgba(255, 255, 255, 0.92)',
+                        borderColor: isDark ? 'rgba(148, 163, 184, 0.45)' : 'rgba(148, 163, 184, 0.35)',
+                        shadowColor: isDark ? '#000000' : '#1E293B',
+                        shadowOpacity: 0.15,
+                        shadowOffset: { width: 0, height: 10 },
+                        shadowRadius: 18,
+                        elevation: 10,
+                     },
+                  ]}
+               >
+                  <Text style={[styles.legendTitle, { color: isDark ? '#E2E8F0' : '#0F172A' }]}>Territory Owners</Text>
+                  {territoryLegend.map((entry) => {
+                     const isCurrentOwner = entry.isCurrent;
+                     return (
+                        <View key={entry.id} style={styles.legendRow}>
+                           <View
+                              style={[
+                                 styles.legendSwatch,
+                                 {
+                                    backgroundColor: entry.swatch,
+                                    borderColor: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(15, 23, 42, 0.2)',
+                                 },
+                              ]}
+                           />
+                           <Text style={[styles.legendLabel, { color: isDark ? '#F8FAFC' : '#1F2937' }]}>{entry.name}</Text>
+                           {isCurrentOwner && (
+                              <View style={styles.legendColorPicker}>
+                                 {userColorOptions.map((option) => {
+                                    const isSelected = option.key === userTerritoryColor.key;
+                                    const fallbackBorder = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15, 23, 42, 0.25)';
+                                    return (
+                                       <TouchableOpacity
+                                          key={option.key}
+                                          onPress={() => setUserTerritoryColor(option)}
+                                          style={[
+                                             styles.legendColorOption,
+                                             {
+                                                borderColor: isSelected ? option.stroke : fallbackBorder,
+                                                backgroundColor: option.fill,
+                                             },
+                                          ]}
+                                       />
+                                    );
+                                 })}
+                              </View>
+                           )}
+                        </View>
+                     );
+                  })}
+               </View>
+            )}
 
             {/* Sticky Bottom Stats Bar */}
             <Animated.View 
@@ -671,6 +813,52 @@ const styles = StyleSheet.create({
    stickyBottomBar: {
       position: 'absolute',
       zIndex: 50,
+   },
+   legendContainer: {
+      position: 'absolute',
+      zIndex: 45,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 20,
+      borderWidth: 1,
+      gap: 12,
+      maxWidth: 260,
+      alignSelf: 'flex-start',
+   },
+   legendTitle: {
+      fontSize: 12,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+   },
+   legendRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      width: '100%',
+   },
+   legendSwatch: {
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: 'transparent',
+   },
+   legendLabel: {
+      fontSize: 13,
+      fontWeight: '600',
+   },
+   legendColorPicker: {
+      flexDirection: 'row',
+      marginLeft: 'auto',
+      gap: 6,
+   },
+   legendColorOption: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      borderWidth: 2,
+      backgroundColor: 'rgba(255,255,255,0.4)',
    },
    gradientContainer: {
       flexDirection: 'row',

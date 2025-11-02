@@ -13,6 +13,7 @@ import Toast from "react-native-toast-message";
 import { AvatarUploadResponse } from "@/store/types";
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import AlertCard from '@/components/AlertCard';
 
 const ProfileScreen = () => {
   const { theme, colors, isDark } = useTheme();
@@ -26,10 +27,8 @@ const ProfileScreen = () => {
   const textClass = isDarkMode ? "text-text-primary" : "text-text-light";
   const secondaryTextClass = isDarkMode ? "text-text-secondary" : "text-subtle-light";
   const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-card-light";
-  const iconColor = colors.text.primary;
   const statTileBg = isDarkMode ? "bg-background-dark" : "bg-background-light";
   const headerGradient = isDarkMode ? colors.gradients.berryBlend : colors.gradients.oceanBreeze;
-  const withAlpha = (hex: string, alpha: string) => (hex.length === 7 ? `${hex}${alpha}` : hex);
 
   const formatNumber = (value?: number | null) => {
     if (value === undefined || value === null) return '—';
@@ -211,19 +210,19 @@ const ProfileScreen = () => {
           </Animated.View>
 
           {loading && (
-            <Animated.View
-              entering={FadeInDown.duration(400)}
-              className="flex-row items-center mb-4 p-3 rounded-2xl"
-              style={{ backgroundColor: withAlpha(colors.status.info, isDarkMode ? "26" : "1A") }}
-            >
-              <ActivityIndicator color={iconColor} />
-              <Text className={`ml-3 ${secondaryTextClass}`}>Refreshing profile…</Text>
+            <Animated.View entering={FadeInDown.duration(400)} className="mb-4">
+              <AlertCard
+                type="info"
+                title="Refreshing profile"
+                message="Pulling the latest stats…"
+                leading={<ActivityIndicator color={colors.status.info} />}
+              />
             </Animated.View>
           )}
 
           {error && (
-            <Animated.View entering={FadeInDown.duration(400)}>
-              <Text className={`mb-4 p-3 rounded-2xl ${isDarkMode ? 'text-red-300 bg-red-900/20' : 'text-red-600 bg-red-50'}`}>{error}</Text>
+            <Animated.View entering={FadeInDown.duration(400)} className="mb-4">
+              <AlertCard type="error" title="Something went wrong" message={error} />
             </Animated.View>
           )}
 

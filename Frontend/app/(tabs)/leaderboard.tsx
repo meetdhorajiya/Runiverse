@@ -18,6 +18,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
+import AlertCard from "@/components/AlertCard";
 
 type LeaderboardRowProps = {
   item: LeaderboardEntry;
@@ -213,9 +214,9 @@ const LeaderboardScreen = () => {
             <Text className={`ml-2 text-base font-semibold ${isDarkMode ? "text-text-primary" : "text-gray-700"}`}>{city}</Text>
           </View>
           {error && (
-            <View className="mt-4 bg-red-100 dark:bg-red-900/20 px-4 py-3 rounded-2xl">
-              <Text className="text-sm text-red-700 dark:text-red-300">{error}</Text>
-            </View>
+            <Animated.View entering={FadeInDown.duration(300)} className="mt-4">
+              <AlertCard type="error" title="Unable to load leaderboard" message={error} />
+            </Animated.View>
           )}
         </Animated.View>
       </View>

@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useProgressAnimation } from "@/hooks/useProgressAnimation";
 import { User } from "@/store/types";
+import { authService } from "@/services/AuthService";
 
 interface Task {
   _id: string;
@@ -279,7 +280,7 @@ const ChallengesScreen = () => {
   const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
 
   const user = useStore((s) => s.user);
-  const token = user?.token;
+  const token = user?.token ?? authService.getToken();
 
   const ensureSyncingState = useCallback((taskId: string, syncing: boolean) => {
     setSyncingIds((prev) => {

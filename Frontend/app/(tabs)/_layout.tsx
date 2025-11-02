@@ -13,7 +13,7 @@ export default function TabLayout() {
   const inactiveTint = isDark ? colors.text.tertiary : colors.text.secondary;
   const tabBackground = isDark ? colors.background.secondary : colors.background.elevated;
   const borderTone = isDark ? colors.border.medium : colors.border.light;
-  const bottomInset = Math.max(insets.bottom, 18);
+  const bottomInset = Math.max(insets.bottom, 10);
 
   return (
     <Tabs
@@ -30,29 +30,15 @@ export default function TabLayout() {
           marginTop: 6,
         },
         tabBarStyle: {
-          position: 'absolute',
-          left: 16,
-          right: 16,
-          bottom: bottomInset,
-          height: 68,
-          paddingHorizontal: 12,
-          paddingTop: 10,
-          paddingBottom: 12,
-          borderRadius: 28,
           backgroundColor: tabBackground,
+          borderTopColor: borderTone,
           borderTopWidth: 1,
-          borderColor: borderTone,
-          shadowColor: isDark ? '#000000' : '#111827',
-          shadowOpacity: 0.12,
-          shadowOffset: { width: 0, height: 8 },
-          shadowRadius: 16,
-          elevation: 12,
+          height: 60 + bottomInset,
+          paddingTop: 8,
+          paddingBottom: bottomInset,
         },
         headerShown: false,
         tabBarHideOnKeyboard: true,
-        sceneStyle: {
-          paddingBottom: bottomInset + 76,
-        },
       }}
     >
       <Tabs.Screen

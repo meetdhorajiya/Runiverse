@@ -12,6 +12,7 @@ export default ({ config }) => {
    }
    return {
       expo: {
+         ...config,
          name: 'Runiverse',
          slug: 'Runiverse',
          version: '1.0.0',
@@ -82,10 +83,13 @@ export default ({ config }) => {
          experiments: {
             typedRoutes: true,
          },
-         ...config,
          extra: {
-            router: {},
+            ...(config?.extra ?? {}),
+            router: {
+               ...(config?.extra?.router ?? {}),
+            },
             eas: {
+               ...(config?.extra?.eas ?? {}),
                projectId: '5233a97b-f485-4172-a36c-db748f469175',
             },
             mapboxToken: process.env.MAPBOX_DOWNLOAD_TOKEN,

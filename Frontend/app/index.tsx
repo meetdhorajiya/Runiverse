@@ -15,8 +15,8 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 const VIDEO_URL = 'https://drive.google.com/uc?export=download&id=1Z1CW9f6LJ3wJ8xJY4fdodDxTRvEAzjp7';
 
 export default function WelcomeScreen() {
-  const { theme } = useTheme();
-  const isDarkMode = theme === 'dark';
+  const { isDark, colors } = useTheme();
+  const isDarkMode = isDark;
   const videoRef = useRef<Video | null>(null);
   const router = useRouter();
 
@@ -44,7 +44,7 @@ export default function WelcomeScreen() {
   }, [router]);
 
   return (
-    <SafeAreaView className={isDarkMode ? 'flex-1 bg-background-dark' : 'flex-1 bg-black'}>
+    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background.primary }}>
       <View className="flex-1">
         {/* Background Video */}
         <Video
@@ -60,7 +60,7 @@ export default function WelcomeScreen() {
 
         {/* Darken + vignette overlays */}
         <LinearGradient
-          colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.40)', 'rgba(0,0,0,1)']}
+          colors={isDarkMode ? [colors.overlay.scrim, colors.overlay.subtle, '#000000'] : [colors.overlay.scrim, colors.overlay.subtle, '#0A0A0A']}
           locations={[0, 0.55, 1]}
           style={StyleSheet.absoluteFill}
         />
@@ -73,14 +73,14 @@ export default function WelcomeScreen() {
             className="mb-12" 
             style={{ gap: 14 }}
           >
-            <Text className="text-5xl font-bold text-white leading-tight tracking-tight">
+            <Text className="text-5xl font-bold leading-tight tracking-tight" style={{ color: colors.text.primary }}>
               Run. Conquer.
               {"\n"}Own Your World.
             </Text>
-            <Text className="text-lg text-gray-300 leading-relaxed">
+            <Text className="text-lg leading-relaxed" style={{ color: colors.text.secondary }}>
               Transform every step into progress. Capture territory, climb leaderboards and grow stronger with the community that runs the Runiverse.
             </Text>
-            <Text className="text-xs uppercase tracking-widest text-gray-400 font-medium">
+            <Text className="text-xs uppercase tracking-widest font-medium" style={{ color: colors.text.tertiary }}>
               Seamless tracking • Territory strategy • Social motivation
             </Text>
           </Animated.View>
@@ -91,16 +91,28 @@ export default function WelcomeScreen() {
             className="flex-row justify-between items-center mb-2"
           >
             <View className="flex-row items-center" style={{ gap: 6 }}>
-              <View className="h-2 w-8 bg-primary-green rounded-full shadow-sm shadow-primary-green/50" />
-              <View className="h-2 w-2 bg-neutral-400/50 rounded-full" />
-              <View className="h-2 w-2 bg-neutral-400/30 rounded-full" />
+              <View
+                className="h-2 w-8 rounded-full"
+                style={{ backgroundColor: colors.accent.primary, shadowColor: colors.accent.primary, shadowOpacity: 0.35, shadowRadius: 6 }}
+              />
+              <View className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.text.tertiary + '80' }} />
+              <View className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.text.tertiary + '55' }} />
             </View>
             <Pressable 
               onPress={() => router.push('/login')}
-              className="bg-primary-green h-16 w-16 rounded-full items-center justify-center shadow-xl shadow-primary-green/40 active:scale-95"
-              style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] }]}
+              className="h-16 w-16 rounded-full items-center justify-center active:scale-95"
+              style={({ pressed }) => [
+                {
+                  opacity: pressed ? 0.9 : 1,
+                  transform: [{ scale: pressed ? 0.95 : 1 }],
+                  backgroundColor: colors.accent.primary,
+                  shadowColor: colors.accent.primary,
+                  shadowOpacity: 0.4,
+                  shadowRadius: 12,
+                },
+              ]}
             >
-              <FontAwesome name="arrow-right" size={26} color="black" />
+              <FontAwesome name="arrow-right" size={26} color={isDarkMode ? colors.text.primary : '#FFFFFF'} />
             </Pressable>
           </Animated.View>
         </View>

@@ -219,7 +219,6 @@ const LeaderboardScreen = () => {
           )}
         </Animated.View>
       </View>
-
       {loading && entries.length === 0 ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color={isDarkMode ? "#60A5FA" : "#2563EB"} />

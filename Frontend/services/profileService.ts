@@ -23,6 +23,8 @@ export const profileService = {
             steps: resp.steps,
             distance: resp.distance,
             territories: resp.territories,
+            streak: resp.streak,
+            multiplier: resp.multiplier,
             city: resp.city ?? null,
             lifetimeSteps: resp.lifetimeSteps,
             lifetimeDistance: resp.lifetimeDistance,
@@ -55,6 +57,8 @@ export const profileService = {
             city: resp.city ?? null,
             lifetimeSteps: resp.lifetimeSteps,
             lifetimeDistance: resp.lifetimeDistance,
+            streak: resp.streak,
+            multiplier: resp.multiplier,
          } as any;
          console.log("✅ mapped profile:", mapped);
          return { success: true, data: mapped };

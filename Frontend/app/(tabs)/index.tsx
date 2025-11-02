@@ -1,4 +1,3 @@
-// Index.tsx
 import { useState, useEffect, useRef } from "react";
 import { Platform, PermissionsAndroid } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -7,28 +6,29 @@ import { Pedometer } from "expo-sensors";
 import { StyledPressable, StyledText, StyledView } from "@/components/Styled";
 import { Footprints, MapPin, Flame, Lightbulb } from "lucide-react-native";
 import { useStore } from "@/store/useStore";
-import Animated, { 
+import Animated, {
    Extrapolate,
-   FadeInDown, 
-   FadeInUp, 
+   FadeInDown,
+   FadeInUp,
    Easing,
    cancelAnimation,
    interpolate,
    runOnJS,
    useAnimatedScrollHandler,
-   useAnimatedStyle, 
-   useSharedValue, 
-   withRepeat, 
+   useAnimatedStyle,
+   useSharedValue,
+   withRepeat,
    withSequence,
    withTiming
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { routeHistoryService, RouteHistoryEntry } from "@/services/routeHistoryService";
+import { useTheme } from "../../context/ThemeContext";
 
 // rough estimations
 const formatDistance = (steps: number) => (steps * 0.0008).toFixed(2); // ~0.8m/step
-const estimateCalories = (steps: number) => Math.round(steps * 0.04);   // ~0.04 cal/step
+const estimateCalories = (steps: number) => Math.round(steps * 0.04);   // ~0.04 cal/step
 
 type DailyCaloriesEntry = {
    label: string;
@@ -81,6 +81,7 @@ const STICKY_HEADER_HEIGHT = 70;
 export default function Index() {
    const user = useStore((s) => s.user);
    const insets = useSafeAreaInsets();
+   const { colors, isDark } = useTheme();
    const [isPedometerAvailable, setIsPedometerAvailable] = useState<
       "checking" | "yes" | "no"
    >("checking");
@@ -102,15 +103,37 @@ export default function Index() {
    const [baseline, setBaseline] = useState(0);
 
    const lastReadingRef = useRef(0);
-   
+
+   const headerGradientSource = isDark
+      ? colors.gradients.tealWave
+      : colors.gradients.skyBlue;
+   const applyOverlayAlpha = (tone: string) =>
+      tone.startsWith("#") && tone.length === 7 ? `${tone}E6` : tone;
+   const headerGradient = [
+      applyOverlayAlpha(headerGradientSource[0]),
+      applyOverlayAlpha(headerGradientSource[1]),
+   ] as const;
+   const heroGradient = (isDark
+      ? colors.gradients.northernLights
+      : colors.gradients.rainbowSoft) as readonly [string, string, ...string[]];
+   const tileOverlayColor = isDark ? "rgba(245,245,245,0.08)" : "rgba(26,26,26,0.08)";
+   const chartBackground = isDark ? colors.background.tertiary : colors.background.secondary;
+   const hourlyBarGradient = (isDark
+      ? [colors.status.info, colors.accent.secondary]
+      : [colors.status.success, colors.accent.primary]) as [string, string];
+   const dailyBarGradient = (isDark
+      ? [colors.status.info, colors.accent.primary]
+      : [colors.status.success, colors.accent.secondary]) as [string, string];
+   const withAlpha = (hex: string, alpha: string) => (hex.length === 7 ? `${hex}${alpha}` : hex);
+
    // Scroll animation values
    const scrollY = useSharedValue(0);
    const [isHeaderSticky, setIsHeaderSticky] = useState(false);
-   
+
    // Animated border pulse effect
    const borderPulse = useSharedValue(0);
    const ctaPulse = useSharedValue(1);
-   
+
    useEffect(() => {
       borderPulse.value = withRepeat(
          withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.quad) }),
@@ -143,7 +166,7 @@ export default function Index() {
    const scrollHandler = useAnimatedScrollHandler({
       onScroll: (event) => {
          scrollY.value = event.contentOffset.y;
-         
+
          // Trigger sticky state at threshold
          if (event.contentOffset.y > HEADER_HEIGHT - STICKY_HEADER_HEIGHT) {
             if (!isHeaderSticky) {
@@ -238,7 +261,7 @@ export default function Index() {
          return;
       }
 
-   let subscription: { remove: () => void } | null = null;
+      let subscription: { remove: () => void } | null = null;
 
       async function initPedometer() {
          try {
@@ -466,7 +489,7 @@ export default function Index() {
          return;
       }
 
-   const todayKey = getDayKey(new Date());
+      const todayKey = getDayKey(new Date());
 
       const snapshot: TodayMetricsSnapshot = {
          date: todayKey,
@@ -598,67 +621,77 @@ export default function Index() {
          style={{
             paddingTop: Math.max(insets.top, 16),
             paddingBottom: Math.max(insets.bottom, 16),
+            backgroundColor: colors.background.primary,
          }}
       >
          {/* Sticky Header - Compact Stats Bar */}
-      <Animated.View 
-            style={[stickyHeaderStyle, { 
-               position: 'absolute', 
-         top: insets.top + 12, 
-               left: 12, 
-               right: 12, 
+         <Animated.View
+            style={[stickyHeaderStyle, {
+               position: 'absolute',
+               top: insets.top + 12,
+               left: 12,
+               right: 12,
                zIndex: 100,
-               height: STICKY_HEADER_HEIGHT 
+               height: STICKY_HEADER_HEIGHT
             }]}
             pointerEvents={isHeaderSticky ? 'auto' : 'none'}
          >
             <BlurView intensity={80} tint="default" className="flex-1 rounded-3xl overflow-hidden">
                <LinearGradient
-                  colors={['rgba(106, 90, 205, 0.95)', 'rgba(0, 200, 83, 0.95)']}
+                  colors={headerGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   className="flex-1 px-4 py-3 flex-row items-center justify-around"
                >
                   {/* Compact Step Count */}
                   <StyledView className="flex-row items-center">
-                     <StyledView className="bg-white/20 p-2 rounded-xl mr-2">
-                        <Footprints size={18} color="#fff" strokeWidth={2.5} />
+                     <StyledView
+                        className="p-2 rounded-xl mr-2"
+                        style={{ backgroundColor: tileOverlayColor }}
+                     >
+                        <Footprints size={18} color={colors.text.primary} strokeWidth={2.5} />
                      </StyledView>
                      <StyledView>
-                        <StyledText className="text-white/70 text-[10px] uppercase tracking-wide">Steps</StyledText>
-                        <StyledText className="text-white text-base font-bold">{totalTodaySteps}</StyledText>
+                        <StyledText className="text-[10px] uppercase tracking-wide" style={{ color: colors.text.secondary }}>Steps</StyledText>
+                        <StyledText className="text-base font-bold" style={{ color: colors.text.primary }}>{totalTodaySteps}</StyledText>
                      </StyledView>
                   </StyledView>
 
                   {/* Compact Distance */}
                   <StyledView className="flex-row items-center">
-                     <StyledView className="bg-white/20 p-2 rounded-xl mr-2">
-                        <MapPin size={18} color="#fff" strokeWidth={2.5} />
+                     <StyledView
+                        className="p-2 rounded-xl mr-2"
+                        style={{ backgroundColor: tileOverlayColor }}
+                     >
+                        <MapPin size={18} color={colors.text.primary} strokeWidth={2.5} />
                      </StyledView>
                      <StyledView>
-                        <StyledText className="text-white/70 text-[10px] uppercase tracking-wide">Distance</StyledText>
-                        <StyledText className="text-white text-base font-bold">{formatDistance(totalTodaySteps)} km</StyledText>
+                        <StyledText className="text-[10px] uppercase tracking-wide" style={{ color: colors.text.secondary }}>Distance</StyledText>
+                        <StyledText className="text-base font-bold" style={{ color: colors.text.primary }}>{formatDistance(totalTodaySteps)} km</StyledText>
                      </StyledView>
                   </StyledView>
 
                   {/* Compact Calories */}
                   <StyledView className="flex-row items-center">
-                     <StyledView className="bg-white/20 p-2 rounded-xl mr-2">
-                        <Flame size={18} color="#fff" strokeWidth={2.5} />
+                     <StyledView
+                        className="p-2 rounded-xl mr-2"
+                        style={{ backgroundColor: tileOverlayColor }}
+                     >
+                        <Flame size={18} color={colors.text.primary} strokeWidth={2.5} />
                      </StyledView>
                      <StyledView>
-                        <StyledText className="text-white/70 text-[10px] uppercase tracking-wide">Calories</StyledText>
-                        <StyledText className="text-white text-base font-bold">{estimateCalories(totalTodaySteps)}</StyledText>
+                        <StyledText className="text-[10px] uppercase tracking-wide" style={{ color: colors.text.secondary }}>Calories</StyledText>
+                        <StyledText className="text-base font-bold" style={{ color: colors.text.primary }}>{estimateCalories(totalTodaySteps)}</StyledText>
                      </StyledView>
                   </StyledView>
                </LinearGradient>
             </BlurView>
          </Animated.View>
 
-         <Animated.ScrollView 
+         <Animated.ScrollView
             onScroll={scrollHandler}
             scrollEventThrottle={16}
-            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 32), paddingTop: 8 }} 
+            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 32), paddingTop: 8 }}
             showsVerticalScrollIndicator={false}
             contentInsetAdjustmentBehavior="automatic"
          >
@@ -669,7 +702,7 @@ export default function Index() {
                   style={[
                      heroCardStyle,
                      {
-                        shadowColor: '#6A5ACD',
+                        shadowColor: colors.accent.primary,
                         shadowOffset: { width: 0, height: 8 },
                         shadowRadius: 18,
                         elevation: 14,
@@ -677,112 +710,187 @@ export default function Index() {
                   ]}
                >
                   <LinearGradient
-                     colors={['#6A5ACD', '#7B68EE', '#00C853']}
+                     colors={heroGradient}
                      start={{ x: 0, y: 0 }}
                      end={{ x: 1, y: 1 }}
                      className="rounded-3xl p-6 overflow-hidden"
                   >
-                        {/* Content */}
-                        <StyledView style={{ position: 'relative', zIndex: 1 }}>
-                           <StyledView className="flex-row items-center mb-2">
-                              <StyledView className="w-1 h-4 bg-white rounded-full mr-2" />
-                              <StyledText className="text-xs uppercase tracking-widest text-white/90 font-bold">
-                                 {isPedometerAvailable === "yes" ? "Daily Snapshot" : "Sensor Unavailable"}
-                              </StyledText>
-                           </StyledView>
-                           
-                           <StyledText className="mt-1 text-5xl font-black text-white tracking-tight leading-tight" style={{
-                              textShadowColor: 'rgba(0, 0, 0, 0.3)',
+                     {/* Content */}
+                     <StyledView style={{ position: 'relative', zIndex: 1 }}>
+                        <StyledView className="flex-row items-center mb-2">
+                           <StyledView
+                              className="w-1 h-4 rounded-full mr-2"
+                              style={{ backgroundColor: colors.accent.primary }}
+                           />
+                           <StyledText
+                              className="text-xs uppercase tracking-widest font-bold"
+                              style={{ color: colors.text.secondary }}
+                           >
+                              {isPedometerAvailable === "yes" ? "Daily Snapshot" : "Sensor Unavailable"}
+                           </StyledText>
+                        </StyledView>
+
+                        <StyledText
+                           className="mt-1 text-5xl font-black tracking-tight leading-tight"
+                           style={{
+                              color: colors.text.primary,
+                              textShadowColor: isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.25)',
                               textShadowOffset: { width: 0, height: 2 },
                               textShadowRadius: 8,
-                           }}>
-                              {user?.username ? `Hey, ${user.username}!` : "Welcome!"}
-                           </StyledText>
-                           
-                           <StyledText className="mt-3 text-base text-white/95 leading-relaxed font-medium">
-                              {isPedometerAvailable === "yes"
-                                 ? "Every step brings you closer to your legend. Keep crushing it! 💪"
-                                 : "We couldn't access step data. Check permissions to stay in sync."}
-                           </StyledText>
-                           
-                           <StyledView className="mt-8 flex-row justify-between items-center">
-                              {/* Steps Today Card */}
-                              <StyledView className="bg-white/15 backdrop-blur-xl rounded-2xl p-4 flex-1 mr-2" style={{
-                              }}>
-                                 <StyledView className="flex-row items-center mb-2">
-                                    <Footprints size={16} color="#fff" strokeWidth={2.5} />
-                                    <StyledText className="text-white/80 text-xs uppercase tracking-wider ml-2 font-semibold">Today</StyledText>
-                                 </StyledView>
-                                 <StyledText className="text-4xl font-black text-white" style={{
+                           }}
+                        >
+                           {user?.username ? `Hey, ${user.username}!` : "Welcome!"}
+                        </StyledText>
+
+                        <StyledText
+                           className="mt-3 text-base leading-relaxed font-medium"
+                           style={{ color: colors.text.secondary }}
+                        >
+                           {isPedometerAvailable === "yes"
+                              ? "Every step brings you closer to your legend. Keep crushing it! 💪"
+                              : "We couldn't access step data. Check permissions to stay in sync."}
+                        </StyledText>
+
+                        <StyledView className="mt-8 flex-row justify-between items-center">
+                           {/* Steps Today Card */}
+                           <StyledView
+                              className="rounded-2xl p-4 flex-1 mr-2"
+                              style={{ backgroundColor: tileOverlayColor }}
+                           >
+                              <StyledView className="flex-row items-center mb-2">
+                                 <Footprints size={16} color={colors.text.primary} strokeWidth={2.5} />
+                                 <StyledText
+                                    className="text-xs uppercase tracking-wider ml-2 font-semibold"
+                                    style={{ color: colors.text.secondary }}
+                                 >
+                                    Today
+                                 </StyledText>
+                              </StyledView>
+                              <StyledText
+                                 className="text-4xl font-black"
+                                 style={{
+                                    color: colors.text.primary,
                                     textShadowColor: 'rgba(0, 0, 0, 0.2)',
                                     textShadowOffset: { width: 0, height: 1 },
                                     textShadowRadius: 4,
-                                 }}>
-                                    {totalTodaySteps.toLocaleString()}
-                                 </StyledText>
-                                 <StyledText className="text-white/70 text-xs mt-1 font-medium">steps</StyledText>
-                              </StyledView>
-                              
-                              {/* Lifetime Steps Card */}
-                              <StyledView className="bg-white/15 backdrop-blur-xl rounded-2xl p-4 flex-1 ml-2" style={{
-                              }}>
-                                 <StyledView className="flex-row items-center mb-2">
-                                    <Lightbulb size={16} color="#FFD700" strokeWidth={2.5} />
-                                    <StyledText className="text-white/80 text-xs uppercase tracking-wider ml-2 font-semibold">Lifetime</StyledText>
-                                 </StyledView>
-                                 <StyledText className="text-4xl font-black text-white" style={{
-                                    textShadowColor: 'rgba(0, 0, 0, 0.2)',
-                                    textShadowOffset: { width: 0, height: 1 },
-                                    textShadowRadius: 4,
-                                 }}>
-                                    {(user?.lifetimeSteps ?? 0).toLocaleString()}
-                                 </StyledText>
-                                 <StyledText className="text-white/70 text-xs mt-1 font-medium">total steps</StyledText>
-                              </StyledView>
+                                 }}
+                              >
+                                 {totalTodaySteps.toLocaleString()}
+                              </StyledText>
+                              <StyledText
+                                 className="text-xs mt-1 font-medium"
+                                 style={{ color: colors.text.tertiary }}
+                              >
+                                 steps
+                              </StyledText>
                            </StyledView>
-                           <StyledView className="mt-8 flex-row justify-between items-center">
-                              {/* Steps Today Card */}
-                              <StyledView className="bg-white/15 backdrop-blur-xl rounded-2xl p-4 flex-1 mr-2" style={{
-                              }}>
-                                 <StyledView className="flex-row items-center mb-2">
-                                    <MapPin size={16} color="#fff" strokeWidth={2.5} />
-                                    <StyledText className="text-white/80 text-xs uppercase tracking-wider ml-2 font-semibold">Distance</StyledText>
-                                 </StyledView>
-                                 <StyledText className="text-3xl font-black text-white" style={{
+
+                           {/* Lifetime Steps Card */}
+                           <StyledView
+                              className="rounded-2xl p-4 flex-1 ml-2"
+                              style={{ backgroundColor: tileOverlayColor }}
+                           >
+                              <StyledView className="flex-row items-center mb-2">
+                                 <Lightbulb size={16} color={colors.status.warning} strokeWidth={2.5} />
+                                 <StyledText
+                                    className="text-xs uppercase tracking-wider ml-2 font-semibold"
+                                    style={{ color: colors.text.secondary }}
+                                 >
+                                    Lifetime
+                                 </StyledText>
+                              </StyledView>
+                              <StyledText
+                                 className="text-4xl font-black"
+                                 style={{
+                                    color: colors.text.primary,
                                     textShadowColor: 'rgba(0, 0, 0, 0.2)',
                                     textShadowOffset: { width: 0, height: 1 },
                                     textShadowRadius: 4,
-                                 }}>
-                                    {formatDistance(totalTodaySteps)}
-                                 </StyledText>
-                                 <StyledText className="text-white/70 text-xs mt-1 font-medium">Km</StyledText>
-                              </StyledView>
-                              
-                              {/* Lifetime Steps Card */}
-                              <StyledView className="bg-white/15 backdrop-blur-xl rounded-2xl p-4 flex-1 ml-2" style={{
-                              }}>
-                                 <StyledView className="flex-row items-center mb-2">
-                                    <Flame size={16} color="#FFD700" strokeWidth={2.5} />
-                                    <StyledText className="text-white/80 text-xs uppercase tracking-wider ml-2 font-semibold">Calorie</StyledText>
-                                 </StyledView>
-                                 <StyledText className="text-3xl font-black text-white" style={{
-                                    textShadowColor: 'rgba(0, 0, 0, 0.2)',
-                                    textShadowOffset: { width: 0, height: 1 },
-                                    textShadowRadius: 4,
-                                 }}>
-                                    {estimateCalories(totalTodaySteps).toString()}
-                                 </StyledText>
-                                 <StyledText className="text-white/70 text-xs mt-1 font-medium">Calorie Burned</StyledText>
-                              </StyledView>
+                                 }}
+                              >
+                                 {(user?.lifetimeSteps ?? 0).toLocaleString()}
+                              </StyledText>
+                              <StyledText
+                                 className="text-xs mt-1 font-medium"
+                                 style={{ color: colors.text.tertiary }}
+                              >
+                                 total steps
+                              </StyledText>
                            </StyledView>
                         </StyledView>
-            </LinearGradient>
-         </Animated.View>
+                        <StyledView className="mt-8 flex-row justify-between items-center">
+                           {/* Steps Today Card */}
+                           <StyledView
+                              className="rounded-2xl p-4 flex-1 mr-2"
+                              style={{ backgroundColor: tileOverlayColor }}
+                           >
+                              <StyledView className="flex-row items-center mb-2">
+                                 <MapPin size={16} color={colors.accent.primary} strokeWidth={2.5} />
+                                 <StyledText
+                                    className="text-xs uppercase tracking-wider ml-2 font-semibold"
+                                    style={{ color: colors.text.secondary }}
+                                 >
+                                    Distance
+                                 </StyledText>
+                              </StyledView>
+                              <StyledText
+                                 className="text-3xl font-black"
+                                 style={{
+                                    color: colors.text.primary,
+                                    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+                                    textShadowOffset: { width: 0, height: 1 },
+                                    textShadowRadius: 4,
+                                 }}
+                              >
+                                 {formatDistance(totalTodaySteps)}
+                              </StyledText>
+                              <StyledText
+                                 className="text-xs mt-1 font-medium"
+                                 style={{ color: colors.text.tertiary }}
+                              >
+                                 Km
+                              </StyledText>
+                           </StyledView>
+
+                           {/* Lifetime Steps Card */}
+                           <StyledView
+                              className="rounded-2xl p-4 flex-1 ml-2"
+                              style={{ backgroundColor: tileOverlayColor }}
+                           >
+                              <StyledView className="flex-row items-center mb-2">
+                                 <Flame size={16} color={colors.status.warning} strokeWidth={2.5} />
+                                 <StyledText
+                                    className="text-xs uppercase tracking-wider ml-2 font-semibold"
+                                    style={{ color: colors.text.secondary }}
+                                 >
+                                    Calorie
+                                 </StyledText>
+                              </StyledView>
+                              <StyledText
+                                 className="text-3xl font-black"
+                                 style={{
+                                    color: colors.text.primary,
+                                    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+                                    textShadowOffset: { width: 0, height: 1 },
+                                    textShadowRadius: 4,
+                                 }}
+                              >
+                                 {estimateCalories(totalTodaySteps).toString()}
+                              </StyledText>
+                              <StyledText
+                                 className="text-xs mt-1 font-medium"
+                                 style={{ color: colors.text.tertiary }}
+                              >
+                                 Calorie Burned
+                              </StyledText>
+                           </StyledView>
+                        </StyledView>
+                     </StyledView>
+                  </LinearGradient>
+               </Animated.View>
 
                <Animated.View
-                  entering={FadeInDown.duration(600).delay(300)}
                   className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl"
-                  style={{ marginBottom: 32 }}
                >
                   <StyledView>
                      <StyledText className="text-xs uppercase tracking-widest text-subtle-light dark:text-subtle-dark font-medium">
@@ -803,7 +911,10 @@ export default function Index() {
                               Updated automatically
                            </StyledText>
                         </StyledView>
-                        <StyledView className="mt-3 bg-background-light/60 dark:bg-background-dark/60 rounded-2xl p-4 overflow-hidden">
+                        <StyledView
+                           className="mt-3 rounded-2xl p-4 overflow-hidden"
+                           style={{ backgroundColor: chartBackground, borderColor: colors.border.light, borderWidth: 1 }}
+                        >
                            {hourlyCalories.length === 0 ? (
                               <StyledView className="py-6 items-center">
                                  <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
@@ -822,8 +933,8 @@ export default function Index() {
                                           ? Math.max((data.calories / maxHourlyCalories) * chartHeight, 4)
                                           : 4;
                                        return (
-                                          <Animated.View 
-                                             key={data.label} 
+                                          <Animated.View
+                                             key={data.label}
                                              className="items-center mx-[4px]"
                                              entering={FadeInUp.duration(400).delay(idx * 50)}
                                           >
@@ -831,11 +942,11 @@ export default function Index() {
                                                 {data.calories}
                                              </StyledText>
                                              <LinearGradient
-                                                colors={['#00C853', '#6A5ACD']}
+                                                colors={hourlyBarGradient}
                                                 start={{ x: 0, y: 1 }}
                                                 end={{ x: 0, y: 0 }}
-                                                style={{ 
-                                                   width: 12, 
+                                                style={{
+                                                   width: 12,
                                                    height: barHeight,
                                                    borderTopLeftRadius: 8,
                                                    borderTopRightRadius: 8,
@@ -862,7 +973,10 @@ export default function Index() {
                               Daily calorie estimates
                            </StyledText>
                         </StyledView>
-                        <StyledView className="mt-3 bg-background-light/60 dark:bg-background-dark/60 rounded-2xl p-4 overflow-hidden">
+                        <StyledView
+                           className="mt-3 rounded-2xl p-4 overflow-hidden"
+                           style={{ backgroundColor: chartBackground, borderColor: colors.border.light, borderWidth: 1 }}
+                        >
                            {dailyCalories.length === 0 ? (
                               <StyledView className="py-6 items-center">
                                  <StyledText className="text-sm text-subtle-light dark:text-subtle-dark">
@@ -876,8 +990,8 @@ export default function Index() {
                                        ? Math.max((data.calories / maxDailyCalories) * chartHeight, 6)
                                        : 6;
                                     return (
-                                       <Animated.View 
-                                          key={data.label} 
+                                       <Animated.View
+                                          key={data.label}
                                           className="items-center mx-[3px]"
                                           entering={FadeInUp.duration(500).delay(idx * 80)}
                                        >
@@ -885,11 +999,11 @@ export default function Index() {
                                              {data.calories}
                                           </StyledText>
                                           <LinearGradient
-                                             colors={['#00C853', '#7B68EE']}
+                                             colors={dailyBarGradient}
                                              start={{ x: 0, y: 1 }}
                                              end={{ x: 0, y: 0 }}
-                                             style={{ 
-                                                width: 24, 
+                                             style={{
+                                                width: 24,
                                                 height: barHeight,
                                                 borderTopLeftRadius: 8,
                                                 borderTopRightRadius: 8,
@@ -908,7 +1022,9 @@ export default function Index() {
                   </Animated.View>
                </Animated.View>
 
-               <Animated.View entering={FadeInDown.duration(600).delay(340)} className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl">
+               <Animated.View
+                  className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl"
+               >
                   <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark tracking-tight">
                      Route History
                   </StyledText>
@@ -922,7 +1038,9 @@ export default function Index() {
                   </StyledView>
                </Animated.View>
 
-               <Animated.View entering={FadeInDown.duration(600).delay(400)} className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl">
+               <Animated.View
+                  className="mt-8 rounded-3xl p-6 bg-card-light dark:bg-card-dark shadow-xl"
+               >
                   <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark tracking-tight">
                      Session Controls
                   </StyledText>
@@ -931,19 +1049,40 @@ export default function Index() {
                   </StyledText>
 
                   <StyledView className="mt-6 flex-row justify-between">
-                     <StyledView className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl flex-1 mr-2">
+                     <StyledView
+                        className="p-4 rounded-2xl flex-1 mr-2"
+                        style={{
+                           backgroundColor: withAlpha(colors.status.info, isDark ? "26" : "1A"),
+                           borderColor: colors.border.light,
+                           borderWidth: 1,
+                        }}
+                     >
                         <StyledText className="text-subtle-light dark:text-subtle-dark text-xs uppercase tracking-wide">Live steps</StyledText>
                         <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark mt-1">
                            {liveStepCount}
                         </StyledText>
                      </StyledView>
-                     <StyledView className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-2xl flex-1 mx-1">
+                     <StyledView
+                        className="p-4 rounded-2xl flex-1 mx-1"
+                        style={{
+                           backgroundColor: withAlpha(colors.accent.primary, isDark ? "26" : "1A"),
+                           borderColor: colors.border.light,
+                           borderWidth: 1,
+                        }}
+                     >
                         <StyledText className="text-subtle-light dark:text-subtle-dark text-xs uppercase tracking-wide">Session steps</StyledText>
                         <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark mt-1">
                            {Math.max(sessionSteps, 0)}
                         </StyledText>
                      </StyledView>
-                     <StyledView className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-2xl flex-1 ml-2">
+                     <StyledView
+                        className="p-4 rounded-2xl flex-1 ml-2"
+                        style={{
+                           backgroundColor: withAlpha(colors.status.warning, isDark ? "26" : "1A"),
+                           borderColor: colors.border.light,
+                           borderWidth: 1,
+                        }}
+                     >
                         <StyledText className="text-subtle-light dark:text-subtle-dark text-xs uppercase tracking-wide">Baseline</StyledText>
                         <StyledText className="text-2xl font-bold text-text-light dark:text-text-dark mt-1">
                            {baseline}
@@ -957,7 +1096,7 @@ export default function Index() {
                         style={[
                            ctaAnimatedStyle,
                            {
-                              shadowColor: isActive ? '#FF6B6B' : '#6A5ACD',
+                              shadowColor: isActive ? colors.status.error : colors.accent.primary,
                               shadowOffset: { width: 0, height: 12 },
                               shadowRadius: 26,
                               elevation: 18,
@@ -965,9 +1104,8 @@ export default function Index() {
                         ]}
                      >
                         <StyledPressable
-                           className={`w-48 h-48 rounded-full items-center justify-center shadow-2xl active:scale-95 ${
-                              isActive ? "bg-danger" : "bg-primary"
-                           }`}
+                           className={`w-48 h-48 rounded-full items-center justify-center shadow-2xl active:scale-95 ${isActive ? "bg-danger" : "bg-primary"
+                              }`}
                            onPress={handleToggleWalk}
                            style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.95 : 1 }] }]}
                         >
@@ -981,7 +1119,13 @@ export default function Index() {
                      </Animated.View>
                   </StyledView>
 
-                  <StyledView className="mt-6 border-2 border-dashed border-primary/20 rounded-2xl px-4 py-4 bg-primary/5">
+                  <StyledView
+                     className="mt-6 border-2 border-dashed rounded-2xl px-4 py-4"
+                     style={{
+                        borderColor: withAlpha(colors.accent.primary, "33"),
+                        backgroundColor: withAlpha(colors.accent.primary, isDark ? "1A" : "12"),
+                     }}
+                  >
                      <StyledText className="text-xs text-subtle-light dark:text-subtle-dark leading-relaxed">
                         Raw total since midnight: <StyledText className="font-bold">{initialTodaySteps}</StyledText> steps • Sensor reading: <StyledText className="font-bold">{liveStepCount}</StyledText>
                      </StyledText>
@@ -992,3 +1136,4 @@ export default function Index() {
       </SafeAreaView>
    );
 }
+

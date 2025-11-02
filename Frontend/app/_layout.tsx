@@ -67,10 +67,10 @@ function ActivitySyncBridge() {
 
 // A separate component to handle the main app content
 function AppContent() {
-  const { theme } = useTheme();
+  const { theme, colors } = useTheme();
 
   return (
-    <View className={theme === 'dark' ? "flex-1 bg-background-dark" : "flex-1 bg-white"}>
+    <View className="flex-1" style={{ backgroundColor: colors.background.primary }}>
       <ActivitySyncBridge />
       <>
         <Stack
@@ -89,7 +89,10 @@ function AppContent() {
         </Stack>
         <Toast />
       </>
-      <StatusBar style={theme === 'dark' ? "light" : "dark"} />
+      <StatusBar
+        style={theme === 'dark' ? "light" : "dark"}
+        backgroundColor={colors.background.primary}
+      />
     </View>
   );
 }

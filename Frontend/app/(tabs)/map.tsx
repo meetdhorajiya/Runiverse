@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -7,17 +7,19 @@ import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { authService } from "@/services/AuthService";
-import {
-   isClosedLoop,
-   pathLengthMeters,
-   polygonAreaMeters2,
-} from "@/utils/loopDetection";
 import { territoryService, TerritoryFeature } from "@/services/territoryService";
+import {
+   TerritoryEngine,
+   toEngineTerritory,
+   fromEngineTerritory,
+   type TerritoryFeatureShape,
+} from "@/services/territoryEngine";
 import { useStore } from "@/store/useStore";
 import { Footprints, MapPin, Flame } from "lucide-react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useTheme } from '../../context/ThemeContext';
 
 type LocalRouteSnapshot = {
    date: string;
@@ -32,6 +34,7 @@ Mapbox.setAccessToken(
 );
 
 const MAPBOX_DARK_STYLE = "mapbox://styles/mapbox/dark-v11";
+const MAPBOX_LIGHT_STYLE = "mapbox://styles/mapbox/light-v11";
 
 // Mapbox Streets vector source + layer identifiers for 3D buildings
 const BUILDING_SOURCE_ID = 'mapbox-buildings-source';
@@ -97,12 +100,18 @@ const getUserColor = (userId: string | undefined, isCurrentUser: boolean): { fil
 
 export default function MapScreen() {
    const user = useStore((s) => s.user);
+   const { colors, isDark } = useTheme();
    const [location, setLocation] = useState<[number, number] | null>(null);
    const [route, setRoute] = useState<[number, number][]>([]);
-   const [territories, setTerritories] = useState<TerritoryFeature[]>([]);
+   const [ownedTerritories, setOwnedTerritories] = useState<TerritoryFeature[]>([]);
+   const [otherTerritories, setOtherTerritories] = useState<TerritoryFeature[]>([]);
    const [showBuildings, setShowBuildings] = useState(true);
    const [routeDistance, setRouteDistance] = useState(0);
    const [userTerritoriesCount, setUserTerritoriesCount] = useState(0);
+   const combinedTerritories = useMemo(
+      () => [...ownedTerritories, ...otherTerritories],
+      [ownedTerritories, otherTerritories]
+   );
    const routeStartRef = useRef<number | null>(null);
    const routeRef = useRef<[number, number][]>([]);
    const cameraRef = useRef<Camera>(null);
@@ -110,6 +119,35 @@ export default function MapScreen() {
    const prevAcceptedCoordRef = useRef<[number, number] | null>(null);
    const lastTimestampRef = useRef<number | null>(null);
    const hasCenteredRef = useRef(false);
+
+   const territoryEngineRef = useRef<TerritoryEngine | null>(null);
+   if (!territoryEngineRef.current) {
+      territoryEngineRef.current = new TerritoryEngine({
+         minDistanceMeters: 8,
+         minLoopAreaMeters: 250,
+         simplifyTolerance: 0.00004,
+         maxRoutePoints: 1500,
+         minSegmentSamples: 5,
+      });
+   }
+
+   const updateOwnedTerritories = useCallback(
+      (updater: (prev: TerritoryFeature[]) => TerritoryFeature[]) => {
+         setOwnedTerritories((prev) => {
+            const next = updater(prev);
+            territoryEngineRef.current?.hydrateTerritories(next.map((feature) => toEngineTerritory(feature)));
+            setUserTerritoriesCount(next.length);
+            return next;
+         });
+      },
+      [],
+   );
+
+   const syncOwnedTerritories = useCallback((next: TerritoryFeature[]) => {
+      setOwnedTerritories(next);
+      territoryEngineRef.current?.hydrateTerritories(next.map((feature) => toEngineTerritory(feature)));
+      setUserTerritoriesCount(next.length);
+   }, []);
    const insets = useSafeAreaInsets();
 
    const persistRoute = useCallback(async (coords: [number, number][]) => {
@@ -149,6 +187,7 @@ export default function MapScreen() {
          routeRef.current = parsed.route;
          routeStartRef.current = typeof parsed.startedAt === "number" ? parsed.startedAt : Date.now();
          setRoute(parsed.route);
+         territoryEngineRef.current?.seedRoute(parsed.route);
       } catch (error) {
          console.warn("Failed to hydrate saved route", error);
       }
@@ -156,74 +195,63 @@ export default function MapScreen() {
 
    const loadTerritories = useCallback(async () => {
       try {
-         // Load ALL territories from all users (scope='all')
-         const fetched = await territoryService.fetchTerritories('all');
+         const fetched = await territoryService.fetchTerritories("all");
          console.log(`📍 Loaded ${fetched.length} territories from backend (all users)`);
-         setTerritories(fetched);
-         
-         // Count only current user's territories
-         const userCount = fetched.filter(t => {
-            const ownerId = t.properties?.owner?._id || t.properties?.owner?.id;
+
+         const owned = fetched.filter((feature) => {
+            const ownerId = feature.properties?.owner?._id || feature.properties?.owner?.id;
             return ownerId === user?.id;
-         }).length;
-         setUserTerritoriesCount(userCount);
-         console.log(`👤 User owns ${userCount} territories`);
+         });
+         const others = fetched.filter((feature) => {
+            const ownerId = feature.properties?.owner?._id || feature.properties?.owner?.id;
+            return ownerId !== user?.id;
+         });
+
+         const normalizedOwned = owned.map((feature) => fromEngineTerritory(toEngineTerritory(feature)));
+         const normalizedOthers = others.map((feature) => fromEngineTerritory(toEngineTerritory(feature)));
+
+         syncOwnedTerritories(normalizedOwned);
+         setOtherTerritories(normalizedOthers);
+         console.log(`👤 User owns ${normalizedOwned.length} territories`);
       } catch (error) {
          console.warn("Failed to load territories", error);
       }
-   }, [user?.id]);
+   }, [syncOwnedTerritories, user?.id]);
 
    const submitTerritory = useCallback(
-      (closedPolygon: [number, number][], area: number, length: number) => {
-         const localId = `local-${Date.now()}`;
-         const optimistic: TerritoryFeature = {
-            type: "Feature",
-            geometry: {
-               type: "Polygon",
-               coordinates: [closedPolygon],
-            },
-            properties: {
-               localId,
-               area,
-               length,
-               claimedOn: new Date().toISOString(),
-            },
-         };
+      (feature: TerritoryFeatureShape) => {
+         const ring = feature.geometry.coordinates[0] ?? [];
+         if (ring.length < 4) {
+            return;
+         }
 
-         setTerritories((prevT) => {
-            const newTerritories = [...prevT, optimistic];
-            setUserTerritoriesCount(prev => prev + 1);
-            return newTerritories;
-         });
+         const localId = feature.properties.localId;
+         const coordinates = ring.map(([lon, lat]) => [lon, lat]) as [number, number][];
 
          territoryService
             .claimTerritory({
-               name: `Territory ${new Date().toISOString()}`,
-               coordinates: closedPolygon,
-               area,
-               length,
+               name: feature.properties.name ?? `Territory ${new Date().toISOString()}`,
+               coordinates,
+               area: feature.properties.area,
+               length: feature.properties.length,
             })
             .then((saved) => {
-               console.log("✅ Territory saved successfully:", saved);
-               setTerritories((prevT) =>
-                  prevT.map((territory) =>
-                     territory.properties?.localId === localId ? saved : territory
+               const normalized = fromEngineTerritory(toEngineTerritory(saved));
+               updateOwnedTerritories((prev) =>
+                  prev.map((territory) =>
+                     territory.properties?.localId === localId ? normalized : territory
                   )
                );
-               // Refresh territories from backend to ensure sync
-               loadTerritories().catch(err => console.warn("Failed to reload territories:", err));
             })
             .catch((error) => {
                console.error("❌ Territory save failed:", error);
-               alert(`Failed to save territory: ${error.message || 'Unknown error'}`);
-               setTerritories((prevT) => {
-                  const filtered = prevT.filter((territory) => territory.properties?.localId !== localId);
-                  setUserTerritoriesCount(prev => Math.max(0, prev - 1));
-                  return filtered;
-               });
+               alert(`Failed to save territory: ${error.message || "Unknown error"}`);
+               updateOwnedTerritories((prev) =>
+                  prev.filter((territory) => territory.properties?.localId !== localId)
+               );
             });
       },
-      [loadTerritories]
+      [updateOwnedTerritories]
    );
 
    const handleLocationUpdate = useCallback(
@@ -249,58 +277,48 @@ export default function MapScreen() {
          prevAcceptedCoordRef.current = smoothedCoord;
          setLocation(smoothedCoord);
 
-         let nextRoute: [number, number][] | null = null;
+         const engine = territoryEngineRef.current;
+         if (!engine) {
+            return;
+         }
 
-         setRoute((prev) => {
-            if (prev.length === 0) {
-               routeStartRef.current = Date.now();
-               nextRoute = [smoothedCoord];
-               return nextRoute;
-            }
-
-            const lastCoord = prev[prev.length - 1];
-            const distToLast = distance(lastCoord, smoothedCoord);
-
-            if (distToLast < MIN_DISTANCE_DELTA_METERS) {
-               nextRoute = prev;
-               return prev;
-            }
-
-            const newPath = [...prev, smoothedCoord];
-
-            if (isClosedLoop(newPath, routeStartRef.current)) {
-               const area = polygonAreaMeters2(newPath);
-               const MIN_AREA = 100;
-
-               console.log(`🔄 Loop detected! Area: ${area.toFixed(2)}m², Min required: ${MIN_AREA}m²`);
-
-               if (area > MIN_AREA) {
-                  const closedPolygon = [...newPath, newPath[0]];
-                  const length = pathLengthMeters(newPath);
-                  console.log(`✅ Valid territory formed - Area: ${area.toFixed(2)}m², Length: ${length.toFixed(2)}m`);
-                  submitTerritory(closedPolygon, area, length);
-               } else {
-                  console.log(`❌ Loop too small (${area.toFixed(2)}m² < ${MIN_AREA}m²) - ignoring`);
-               }
-
-               routeStartRef.current = null;
-               nextRoute = [];
-               return [];
-            }
-
-            nextRoute = newPath;
-            return newPath;
+         const result = engine.handleNewCoordinate({
+            latitude: smoothedCoord[1],
+            longitude: smoothedCoord[0],
+            timestamp,
          });
 
-         if (nextRoute !== null) {
-            const hasChanged = nextRoute !== routeRef.current;
-            routeRef.current = nextRoute;
-            if (hasChanged) {
-               persistRoute(nextRoute);
-            }
+         if (!result) {
+            return;
+         }
+
+         const nextRoute = result.route as [number, number][];
+         const routeChanged = result.routeChanged && nextRoute !== routeRef.current;
+
+         routeRef.current = nextRoute;
+         setRoute(nextRoute);
+
+         if (!routeStartRef.current && nextRoute.length > 0) {
+            routeStartRef.current = Date.now();
+         }
+
+         if (nextRoute.length === 0) {
+            routeStartRef.current = null;
+         }
+
+         if (routeChanged) {
+            persistRoute(nextRoute);
+         }
+
+         if (result.createdTerritory) {
+            syncOwnedTerritories(result.territories.map((territory) => fromEngineTerritory(territory)));
+            submitTerritory(result.createdTerritory);
+         } else if (result.mergedTerritory) {
+            syncOwnedTerritories(result.territories.map((territory) => fromEngineTerritory(territory)));
+            submitTerritory(result.mergedTerritory);
          }
       },
-      [persistRoute, submitTerritory]
+      [persistRoute, submitTerritory, syncOwnedTerritories]
    );
 
    useEffect(() => {
@@ -386,19 +404,26 @@ export default function MapScreen() {
          hasCenteredRef.current = true;
       }
    }, [location]);
+   const statsGradient = (isDark ? colors.gradients.sunsetGlow : colors.gradients.tropicalParadise) as readonly string[];
+   const statsGradientColors = [...statsGradient] as [string, string, ...string[]];
+   const toggleBackground = isDark ? 'rgba(15,15,15,0.7)' : 'rgba(255,255,255,0.85)';
+   const toggleBorder = isDark ? 'rgba(148,163,184,0.4)' : 'rgba(148,163,184,0.6)';
+   const toggleActiveBackground = isDark ? '#0EA5E9' : '#38BDF8';
+   const toggleTextColor = isDark ? '#F8FAFC' : '#0F172A';
+
    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }} edges={['bottom', 'left', 'right']}>
-         <StatusBar style="auto" />
-         <View style={{ flex: 1, backgroundColor: '#000', paddingTop: insets.top + 8 }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background.primary }} edges={['bottom', 'left', 'right']}>
+         <StatusBar style={isDark ? 'light' : 'dark'} />
+         <View style={{ flex: 1, backgroundColor: colors.background.primary, paddingTop: insets.top + 8 }}>
             <MapView
                style={{ flex: 1 }}
-               styleURL={MAPBOX_DARK_STYLE}
+               styleURL={isDark ? MAPBOX_DARK_STYLE : MAPBOX_LIGHT_STYLE}
                compassEnabled={true}
                pitchEnabled={true}
                rotateEnabled={true}
                zoomEnabled={true}
                onDidFinishLoadingStyle={() => {
-                  console.log('Dark map style loaded with custom 3D buildings');
+                  console.log(`${isDark ? 'Dark' : 'Light'} map style loaded with custom 3D buildings`);
                }}
             >
                {/* Global 3D Buildings from Mapbox Streets */}
@@ -411,12 +436,19 @@ export default function MapScreen() {
                         minZoomLevel={13}
                         maxZoomLevel={22}
                         style={{
-                           fillExtrusionColor: [
-                              'interpolate', ['linear'], ['get', 'height'],
-                              0, '#4f5b66',
-                              50, '#697887',
-                              150, '#92a4b2'
-                           ],
+                           fillExtrusionColor: isDark
+                              ? [
+                                 'interpolate', ['linear'], ['get', 'height'],
+                                 0, '#4f5b66',
+                                 50, '#697887',
+                                 150, '#92a4b2'
+                              ]
+                              : [
+                                 'interpolate', ['linear'], ['get', 'height'],
+                                 0, '#CBD5F5',
+                                 50, '#A5B4FC',
+                                 150, '#818CF8'
+                              ],
                            fillExtrusionHeight: [
                               'interpolate', ['linear'], ['zoom'],
                               13, 0,
@@ -427,7 +459,7 @@ export default function MapScreen() {
                            fillExtrusionBase: [
                               'coalesce', ['get', 'min_height'], 0
                            ],
-                           fillExtrusionOpacity: 0.92,
+                           fillExtrusionOpacity: isDark ? 0.92 : 0.85,
                         }}
                      />
                      <FillLayer
@@ -435,12 +467,12 @@ export default function MapScreen() {
                         sourceID={BUILDING_SOURCE_ID}
                         sourceLayerID="building"
                         style={{
-                           fillColor: '#000',
+                           fillColor: isDark ? '#000' : '#CBD5F5',
                            fillOpacity: [
                               'interpolate', ['linear'], ['zoom'],
                               13, 0,
-                              14, 0.08,
-                              17, 0.15
+                              14, isDark ? 0.08 : 0.06,
+                              17, isDark ? 0.15 : 0.1
                            ],
                            fillTranslate: [6, 6],
                            fillTranslateAnchor: 'map'
@@ -473,7 +505,7 @@ export default function MapScreen() {
                   </ShapeSource>
                )}
                {/* Territories */}
-               {territories.map((territory, index) => {
+               {combinedTerritories.map((territory, index) => {
                   const featureKey = territory.properties?.id ?? territory.properties?.localId ?? index;
                   const ownerId = territory.properties?.owner?._id || territory.properties?.owner?.id;
                   const isCurrentUser = ownerId === user?.id;
@@ -522,10 +554,16 @@ export default function MapScreen() {
 
             <View style={[styles.controls, { left: insets.left + 16, top: insets.top + 20 }]}>
                <TouchableOpacity
-                  style={[styles.toggleBtn, showBuildings && styles.toggleBtnActive]}
+                  style={[
+                     styles.toggleBtn,
+                     {
+                        backgroundColor: showBuildings ? toggleActiveBackground : toggleBackground,
+                        borderColor: showBuildings ? toggleActiveBackground : toggleBorder,
+                     },
+                  ]}
                   onPress={() => setShowBuildings(prev => !prev)}
                >
-                  <Text style={styles.toggleText}>{showBuildings ? 'Hide 3D' : 'Show 3D'}</Text>
+                  <Text style={[styles.toggleText, { color: toggleTextColor }]}>{showBuildings ? 'Hide 3D' : 'Show 3D'}</Text>
                </TouchableOpacity>
             </View>
 
@@ -541,16 +579,16 @@ export default function MapScreen() {
                   }
                ]}
             >
-               <BlurView intensity={80} tint="dark" style={{ borderRadius: 24, overflow: 'hidden' }}>
+               <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={{ borderRadius: 24, overflow: 'hidden' }}>
                   <LinearGradient
-                     colors={['rgba(106, 90, 205, 0.95)', 'rgba(0, 200, 83, 0.95)']}
+                     colors={statsGradientColors}
                      start={{ x: 0, y: 0 }}
                      end={{ x: 1, y: 0 }}
                      style={styles.gradientContainer}
                   >
                      {/* Distance Stat */}
                      <View style={styles.statItem}>
-                        <View style={styles.iconContainer}>
+                        <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
                            <MapPin size={18} color="#fff" strokeWidth={2.5} />
                         </View>
                         <View>
@@ -561,7 +599,7 @@ export default function MapScreen() {
 
                      {/* Territories Stat */}
                      <View style={styles.statItem}>
-                        <View style={styles.iconContainer}>
+                        <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
                            <Flame size={18} color="#FFD700" strokeWidth={2.5} />
                         </View>
                         <View>
@@ -572,7 +610,7 @@ export default function MapScreen() {
 
                      {/* Calories Stat */}
                      <View style={styles.statItem}>
-                        <View style={styles.iconContainer}>
+                        <View style={[styles.iconContainer, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
                            <Footprints size={18} color="#fff" strokeWidth={2.5} />
                         </View>
                         <View>

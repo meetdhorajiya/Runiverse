@@ -1,5 +1,5 @@
 import React from "react";
-import { ScrollView, Text, Pressable, View } from "react-native";
+import { ScrollView, Text, Pressable, View, Switch } from "react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "../context/ThemeContext";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -9,53 +9,63 @@ import { LinearGradient } from "expo-linear-gradient";
 
 export default function Settings() {
   const router = useRouter();
-  const { theme } = useTheme();
-  const isDarkMode = theme === "dark";
-
-  const bgClass = isDarkMode ? "bg-background-dark" : "bg-gray-100";
-  const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white";
+  const { isDark, setTheme, toggleTheme, colors } = useTheme();
+  const isDarkMode = isDark;
 
   const sections = [
-    { 
-      title: "Account Settings", 
+    {
+      title: "Account Settings",
       route: "/settings/AccountSettings",
       icon: "person-circle",
-      color: "#6A5ACD"
+      tint: colors.accent.primary,
     },
-    { 
-      title: "Privacy Settings", 
+    {
+      title: "Privacy Settings",
       route: "/settings/PrivacySettings",
       icon: "lock-closed",
-      color: "#00C853"
+      tint: colors.accent.secondary,
     },
-    { 
-      title: "Notification Settings", 
+    {
+      title: "Notification Settings",
       route: "/settings/NotificationSettings",
       icon: "notifications",
-      color: "#FF6B6B"
+      tint: colors.status.info,
     },
-    { 
-      title: "Help & Support", 
+    {
+      title: "Help & Support",
       route: "/settings/HelpSupport",
       icon: "help-circle",
-      color: "#FFA500"
+      tint: colors.status.warning,
     },
-    { 
-      title: "Logout", 
+    {
+      title: "Logout",
       route: "/settings/Logout",
       icon: "log-out",
-      color: "#EF4444"
+      tint: colors.status.error,
     },
   ];
 
+  const containerStyle = {
+    backgroundColor: colors.background.primary,
+  } as const;
+
+  const cardStyle = {
+    backgroundColor: colors.background.elevated,
+    borderColor: colors.border.light,
+  } as const;
+
+  const headerGradient = isDarkMode
+    ? colors.gradients.rainbowSoft
+    : colors.gradients.sunriseDelight;
+
   return (
-    <SafeAreaView className={`flex-1 ${bgClass}`}>
+    <SafeAreaView className="flex-1" style={containerStyle}>
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
         <View className="px-6 pt-6">
           <Animated.View entering={FadeInDown.duration(600).delay(100)}>
             <View className="rounded-3xl overflow-hidden mb-6 shadow-xl">
               <LinearGradient
-                colors={['#6A5ACD', '#00C853']}
+                colors={headerGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 className="p-6"
@@ -68,21 +78,61 @@ export default function Settings() {
             </View>
           </Animated.View>
 
-          <Animated.View entering={FadeInDown.duration(600).delay(200)} className={`rounded-3xl shadow-lg overflow-hidden ${cardBgClass}`}>
+          <Animated.View entering={FadeInDown.duration(600).delay(200)} className="rounded-3xl shadow-lg overflow-hidden" style={cardStyle}>
+            <View className="flex-row items-center justify-between px-6 py-5">
+              <Pressable
+                onPress={toggleTheme}
+                className="flex-1 pr-4"
+                style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1 }]}
+              >
+                <Text className={`text-lg font-semibold ${isDarkMode ? 'text-text-primary' : 'text-gray-900'}`}>
+                  Appearance
+                </Text>
+                <Text className={`text-sm mt-1 ${isDarkMode ? 'text-text-secondary' : 'text-gray-500'}`}>
+                  Switch between light and dark themes across the app.
+                </Text>
+              </Pressable>
+              <View className="items-center">
+                <Ionicons
+                  name={isDarkMode ? 'moon' : 'sunny'}
+                  size={22}
+                  color={isDarkMode ? '#FCD34D' : '#F59E0B'}
+                />
+                <Switch
+                  value={isDarkMode}
+                  onValueChange={(value) => setTheme(value ? 'dark' : 'light')}
+                  trackColor={{ false: colors.border.light, true: colors.accent.secondary }}
+                  thumbColor={isDarkMode ? colors.accent.hover : colors.accent.primary }
+                  ios_backgroundColor={colors.border.light}
+                />
+              </View>
+            </View>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.duration(600).delay(300)} className="rounded-3xl shadow-lg overflow-hidden" style={cardStyle}>
             {sections.map((section, index) => (
               <Pressable
                 key={section.title}
                 onPress={() => router.push(section.route as any)}
-                className={`flex-row items-center py-5 px-6 border-b ${
-                  isDarkMode ? 'border-gray-700' : 'border-gray-200'
-                } ${index === sections.length - 1 ? 'border-b-0' : ''} active:bg-gray-100 dark:active:bg-gray-800`}
-                style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+                className="flex-row items-center py-5 px-6 border-b"
+                style={({ pressed }) => [
+                  {
+                    opacity: pressed ? 0.7 : 1,
+                    borderBottomColor:
+                      index === sections.length - 1 ? "transparent" : colors.border.light,
+                    backgroundColor: pressed
+                      ? isDarkMode
+                        ? colors.background.tertiary
+                        : colors.background.secondary
+                      : "transparent",
+                  },
+                ]}
               >
                 <View 
                   className="p-3 rounded-2xl mr-4"
-                  style={{ backgroundColor: `${section.color}15` }}
+                  style={{ backgroundColor: `${section.tint}1A` }}
                 >
-                  <Ionicons name={section.icon as any} size={24} color={section.color} />
+                  <Ionicons name={section.icon as any} size={24} color={section.tint} />
                 </View>
                 <Text className={`flex-1 text-lg font-medium ${isDarkMode ? 'text-text-primary' : 'text-gray-900'}`}>
                   {section.title}

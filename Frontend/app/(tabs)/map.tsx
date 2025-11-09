@@ -6,6 +6,7 @@ import Mapbox, { Camera, MapView, UserLocation, ShapeSource, LineLayer, FillLaye
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { authService } from "@/services/AuthService";
 import { territoryService, TerritoryFeature } from "@/services/territoryService";
 import {
@@ -201,6 +202,15 @@ export default function MapScreen() {
       setUserTerritoriesCount(next.length);
    }, []);
    const insets = useSafeAreaInsets();
+   const tabBarHeight = useBottomTabBarHeight();
+   const stickyBottomOffset = useMemo(
+      () => insets.bottom + tabBarHeight + 12,
+      [insets.bottom, tabBarHeight]
+   );
+   const legendBottomOffset = useMemo(
+      () => stickyBottomOffset + 72,
+      [stickyBottomOffset]
+   );
 
    const persistRoute = useCallback(async (coords: [number, number][]) => {
       try {
@@ -655,7 +665,7 @@ export default function MapScreen() {
                   style={[
                      styles.legendContainer,
                      {
-                        bottom: insets.bottom + 80,
+                        bottom: legendBottomOffset,
                         left: insets.left + 12,
                         backgroundColor: isDark ? 'rgba(17, 24, 39, 0.78)' : 'rgba(255, 255, 255, 0.92)',
                         borderColor: isDark ? 'rgba(148, 163, 184, 0.45)' : 'rgba(148, 163, 184, 0.35)',
@@ -715,7 +725,7 @@ export default function MapScreen() {
                style={[
                   styles.stickyBottomBar,
                   { 
-                     bottom: insets.bottom + 8,
+                     bottom: stickyBottomOffset,
                      left: insets.left + 8,
                      right: insets.right + 8,
                   }

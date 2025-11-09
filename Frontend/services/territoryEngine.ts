@@ -186,69 +186,79 @@ export class TerritoryEngine {
 
     const lastSegment = lineString([this.route[lastIndex - 1], this.route[lastIndex]]);
 
-    for (let i = 0; i < lastIndex - 1; i += 1) {
+    let intersection: Position | null = null;
+    let loopStartIndex: number | null = null;
+
+    for (let i = 0; i < lastIndex - 1 && !intersection; i += 1) {
       const segment = lineString([this.route[i], this.route[i + 1]]);
-      const intersection = selectIntersectionPoint(segment, lastSegment);
-      if (!intersection) {
-        continue;
+      const candidate = selectIntersectionPoint(segment, lastSegment);
+      if (candidate) {
+        intersection = candidate;
+        loopStartIndex = i + 1;
       }
+    }
 
-      const ring = this.buildLoop(intersection, i + 1);
-      if (!ring) {
-        continue;
+    if (!intersection) {
+      const proximityIndex = this.findNearbyClosure(lastIndex);
+      if (proximityIndex !== null) {
+        intersection = this.route[proximityIndex];
+        loopStartIndex = proximityIndex + 1;
       }
+    }
 
-      const normalized = simplify(polygon([ring]), {
-        tolerance: this.config.simplifyTolerance,
-        highQuality: false,
-        mutate: true,
-      });
+    if (intersection !== null && loopStartIndex !== null) {
+      const ring = this.buildLoop(intersection, loopStartIndex);
+      if (ring) {
+        const normalized = simplify(polygon([ring]), {
+          tolerance: this.config.simplifyTolerance,
+          highQuality: false,
+          mutate: true,
+        });
 
-      const simplifiedRing = normalized.geometry.type === "Polygon"
-        ? normalized.geometry.coordinates[0] ?? []
-        : ring;
+        const simplifiedRing = normalized.geometry.type === "Polygon"
+          ? normalized.geometry.coordinates[0] ?? []
+          : ring;
 
-      const dedupedRing = dedupeSequentialPositions(ensureClosedRing(simplifiedRing));
-      if (dedupedRing.length < 4) {
-        continue;
+        const dedupedRing = dedupeSequentialPositions(ensureClosedRing(simplifiedRing));
+        if (dedupedRing.length >= 4) {
+          const feature = createTerritoryFeature(dedupedRing);
+          if (feature.properties.area >= this.config.minLoopAreaMeters) {
+            const evaluation = this.evaluateAgainstExisting(feature);
+            if (evaluation) {
+              const update: HandleCoordinateResult = {
+                routeChanged: true,
+                route: [...this.route],
+                territories: [...this.territories],
+              };
+
+              if (evaluation.action === "ignore") {
+                return update;
+              }
+
+              if (evaluation.action === "merge") {
+                this.territories = this.territories.map((existing, index) =>
+                  index === evaluation.mergeIndex ? evaluation.feature : existing
+                );
+                update.mergedTerritory = evaluation.feature;
+                update.mergedFromIndexes = [evaluation.mergeIndex];
+                this.route = this.route.slice(loopStartIndex);
+                this.lastAppended = this.route.length ? this.route[this.route.length - 1] : undefined;
+                update.territories = [...this.territories];
+                update.route = [...this.route];
+                return update;
+              }
+
+              this.territories = [...this.territories, evaluation.feature];
+              update.createdTerritory = evaluation.feature;
+              update.territories = [...this.territories];
+              this.route = this.route.slice(loopStartIndex);
+              this.lastAppended = this.route.length ? this.route[this.route.length - 1] : undefined;
+              update.route = [...this.route];
+              return update;
+            }
+          }
+        }
       }
-
-      const feature = createTerritoryFeature(dedupedRing);
-      if (feature.properties.area < this.config.minLoopAreaMeters) {
-        continue;
-      }
-
-  const evaluation = this.evaluateAgainstExisting(feature);
-      if (!evaluation) {
-        continue;
-      }
-
-      const update: HandleCoordinateResult = {
-        routeChanged: true,
-        route: [...this.route],
-        territories: [...this.territories],
-      };
-
-      if (evaluation.action === "ignore") {
-        return update;
-      }
-
-      if (evaluation.action === "merge") {
-        this.territories = this.territories.map((existing, index) =>
-          index === evaluation.mergeIndex ? evaluation.feature : existing
-        );
-        update.mergedTerritory = evaluation.feature;
-        update.mergedFromIndexes = [evaluation.mergeIndex];
-        update.territories = [...this.territories];
-        this.resetRoute();
-        return update;
-      }
-
-      this.territories = [...this.territories, evaluation.feature];
-      update.createdTerritory = evaluation.feature;
-      update.territories = [...this.territories];
-      this.resetRoute();
-      return update;
     }
 
     return {
@@ -256,6 +266,19 @@ export class TerritoryEngine {
       route: [...this.route],
       territories: [...this.territories],
     };
+  }
+
+  private findNearbyClosure(lastIndex: number): number | null {
+    const tailGuard = Math.max(this.config.minSegmentSamples, 4);
+    const threshold = Math.max(this.config.minDistanceMeters * 1.5, 12);
+    const lastPoint = this.route[lastIndex];
+    for (let i = 0; i <= lastIndex - tailGuard; i += 1) {
+      const candidate = this.route[i];
+      if (distanceMeters(candidate, lastPoint) <= threshold) {
+        return i;
+      }
+    }
+    return null;
   }
 
   private buildLoop(intersection: Position, startIndex: number): Position[] | null {

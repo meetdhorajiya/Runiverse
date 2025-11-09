@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, Pressable, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { FontAwesome5 } from "@expo/vector-icons";
@@ -115,7 +115,6 @@ interface ChallengeCardProps {
   task: Task;
   icon: string;
   index: number;
-  isDarkMode: boolean;
   progressEntry?: ProgressEntry;
   onJoin: (task: Task) => void;
   trackingAvailable: boolean;
@@ -129,20 +128,43 @@ const difficultyColors: Record<string, string> = {
   hard: "#DC143C",
 };
 
+const challengeStyles = StyleSheet.create({
+  cardContainer: {
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 20,
+    borderWidth: 1,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  joinButton: {
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOffset: { width: 0, height: 10 },
+  },
+  joinButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+});
+
 const ChallengeCard = ({
   task,
   icon,
   index = 0,
-  isDarkMode,
   progressEntry,
   onJoin,
   trackingAvailable,
   syncingCompletion,
   progressReady,
 }: ChallengeCardProps) => {
-  const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
-  const secondaryTextClass = isDarkMode ? "text-text-secondary" : "text-gray-600";
-  const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white";
+  const { colors, isDark } = useTheme();
   const config = METRIC_CONFIG[task.type];
 
   const joined = task.completed || !!progressEntry?.joined;
@@ -171,21 +193,40 @@ const ChallengeCard = ({
     : trackingAvailable
       ? "Join Challenge"
       : "Tracking Unavailable";
+  const surfaceColor = colors.background.elevated;
+  const borderColor = isDark ? colors.border.medium : colors.border.light;
+  const mutedSurface = isDark ? colors.background.tertiary : colors.background.secondary;
+  const joinBackground = joinDisabled ? mutedSurface : colors.status.success;
+  const joinTextColor = joinDisabled ? colors.text.secondary : colors.background.primary;
+  const joinAssistiveColor = colors.text.secondary;
 
   return (
     <Animated.View
       entering={FadeInDown.duration(600).delay(index * 100)}
-      className={`rounded-3xl p-6 mb-5 shadow-lg ${cardBgClass} border border-gray-200/50 dark:border-gray-700/50`}
+      style={[
+        challengeStyles.cardContainer,
+        {
+          backgroundColor: surfaceColor,
+          borderColor,
+          shadowColor: isDark ? "rgba(0,0,0,0.45)" : "rgba(15,23,42,0.16)",
+        },
+      ]}
     >
       <View className="flex-row items-start mb-4">
         <View className="bg-primary/10 dark:bg-primary/20 p-4 rounded-2xl mr-4">
           <FontAwesome5 name={icon || "running"} size={28} color="#00C853" />
         </View>
         <View className="flex-1">
-          <Text className={`text-xl font-bold ${textClass} tracking-tight`}>
+          <Text
+            className="text-xl font-bold tracking-tight"
+            style={{ color: colors.text.primary }}
+          >
             {task.type.charAt(0).toUpperCase() + task.type.slice(1)} Challenge
           </Text>
-          <Text className={`text-base mt-2 mb-3 ${secondaryTextClass} leading-relaxed`}>
+          <Text
+            className="text-base mt-2 mb-3 leading-relaxed"
+            style={{ color: colors.text.secondary }}
+          >
             {task.description}
           </Text>
           <View className="flex-row items-center flex-wrap gap-2">
@@ -210,25 +251,38 @@ const ChallengeCard = ({
         <View>
           <Pressable
             disabled={joinDisabled}
-            className={`p-4 rounded-2xl items-center shadow-lg shadow-primary-green/20 active:scale-98 ${
-              joinDisabled ? "bg-gray-300" : "bg-primary-green"
-            }`}
             onPress={() => onJoin(task)}
             style={({ pressed }) => [
-              { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
+              challengeStyles.joinButton,
+              {
+                backgroundColor: joinBackground,
+                opacity: pressed ? 0.95 : 1,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
+                shadowColor: joinDisabled ? "transparent" : joinBackground,
+                shadowOpacity: joinDisabled ? 0 : 0.25,
+                elevation: joinDisabled ? 0 : 8,
+              },
             ]}
           >
-            <Text className="text-black text-base font-bold tracking-wide">
+            <Text
+              style={[challengeStyles.joinButtonText, { color: joinTextColor }]}
+            >
               {joinButtonLabel}
             </Text>
           </Pressable>
           {!progressReady && (
-            <Text className={`text-xs mt-2 text-center ${secondaryTextClass}`}>
+            <Text
+              className="text-xs mt-2 text-center"
+              style={{ color: joinAssistiveColor }}
+            >
               Preparing your activity data...
             </Text>
           )}
           {progressReady && !trackingAvailable && (
-            <Text className={`text-xs mt-2 text-center ${secondaryTextClass}`}>
+            <Text
+              className="text-xs mt-2 text-center"
+              style={{ color: joinAssistiveColor }}
+            >
               Connect your activity tracker to start this challenge.
             </Text>
           )}
@@ -240,16 +294,25 @@ const ChallengeCard = ({
               style={[progressBarStyle, { height: "100%", backgroundColor: completed ? "#00C853" : "#00A843" }]}
             />
           </View>
-          <Text className={`mt-2 text-center ${secondaryTextClass} font-medium`}>
+          <Text
+            className="mt-2 text-center font-medium"
+            style={{ color: colors.text.secondary }}
+          >
             {progressSummary}
           </Text>
           {syncingCompletion && !completed && (
-            <Text className={`mt-1 text-center text-xs ${secondaryTextClass}`}>
+            <Text
+              className="mt-1 text-center text-xs"
+              style={{ color: colors.text.tertiary }}
+            >
               Syncing progress...
             </Text>
           )}
           {completed && !task.completed && (
-            <Text className={`mt-1 text-center text-xs ${secondaryTextClass}`}>
+            <Text
+              className="mt-1 text-center text-xs"
+              style={{ color: colors.text.tertiary }}
+            >
               Finalizing completion...
             </Text>
           )}
@@ -749,7 +812,6 @@ const ChallengesScreen = () => {
                 index={idx}
                 icon={iconName}
                 task={task}
-                isDarkMode={isDarkMode}
                 progressEntry={progressEntry}
                 onJoin={handleJoin}
                 trackingAvailable={trackingAvailable}

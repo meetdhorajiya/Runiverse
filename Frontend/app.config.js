@@ -12,6 +12,7 @@ export default ({ config }) => {
    }
    return {
       expo: {
+         ...config,
          name: 'Runiverse',
          slug: 'Runiverse',
          version: '1.0.0',
@@ -30,7 +31,7 @@ export default ({ config }) => {
          },
          android: {
             adaptiveIcon: {
-               foregroundImage: './assets/images/adaptive-icon.png',
+               foregroundImage: './assets/images/icon.png',
                backgroundColor: '#ffffff',
             },
             edgeToEdgeEnabled: true,
@@ -57,7 +58,7 @@ export default ({ config }) => {
             [
                'expo-splash-screen',
                {
-                  image: './assets/images/splash-icon.png',
+                  image: './assets/images/icon.png',
                   imageWidth: 200,
                   resizeMode: 'contain',
                   backgroundColor: '#ffffff',
@@ -83,8 +84,12 @@ export default ({ config }) => {
             typedRoutes: true,
          },
          extra: {
-            router: {},
+            ...(config?.extra ?? {}),
+            router: {
+               ...(config?.extra?.router ?? {}),
+            },
             eas: {
+               ...(config?.extra?.eas ?? {}),
                projectId: '5233a97b-f485-4172-a36c-db748f469175',
             },
             mapboxToken: process.env.MAPBOX_DOWNLOAD_TOKEN,

@@ -12,6 +12,8 @@ export interface User {
   city?: string | null;
   lifetimeSteps?: number;
   lifetimeDistance?: number;
+  streak?: number;
+  multiplier?: number;
   token?: string;
 }
 

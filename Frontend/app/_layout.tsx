@@ -7,7 +7,7 @@ import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { useState, useEffect } from "react";
 import ReanimatedSplashScreen from '../components/ReanimatedSplashScreen';
 import { usePedometer } from "@/services/pedometerService";
-import profileService from "@/services/profileService";
+import { profileService } from "@/services/profileService";
 import { authService } from "@/services/AuthService";
 import { locationService } from "@/services/locationService";
 import { useStore } from "@/store/useStore";
@@ -19,8 +19,6 @@ LogBox.ignoreLogs([
   "You are setting the style",
   "Mapbox [error] ViewTagResolver",
 ]);
-
-type StoreState = ReturnType<typeof useStore>;
 
 function ActivitySyncBridge() {
   const { totalToday } = usePedometer();
@@ -69,13 +67,19 @@ function ActivitySyncBridge() {
 
 // A separate component to handle the main app content
 function AppContent() {
-  const { theme } = useTheme();
+  const { theme, colors } = useTheme();
 
   return (
-    <View className={theme === 'dark' ? "flex-1 bg-background-dark" : "flex-1 bg-white"}>
+    <View className="flex-1" style={{ backgroundColor: colors.background.primary }}>
       <ActivitySyncBridge />
       <>
-        <Stack screenOptions={{ headerShown: false }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: "fade",
+            animationTypeForReplace: "push",
+          }}
+        >
           <Stack.Screen name="index" />
           <Stack.Screen name="login" />
           <Stack.Screen name="register" />
@@ -85,7 +89,10 @@ function AppContent() {
         </Stack>
         <Toast />
       </>
-      <StatusBar style={theme === 'dark' ? "light" : "dark"} />
+      <StatusBar
+        style={theme === 'dark' ? "light" : "dark"}
+        backgroundColor={colors.background.primary}
+      />
     </View>
   );
 }

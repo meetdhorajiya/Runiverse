@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, Image, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, Pressable, Image, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
@@ -11,21 +11,24 @@ import * as ImagePicker from "expo-image-picker";
 import { avatarService } from "@/services/avatarService";
 import Toast from "react-native-toast-message";
 import { AvatarUploadResponse } from "@/store/types";
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import AlertCard from '@/components/AlertCard';
 
 const ProfileScreen = () => {
-  const { theme } = useTheme();
+  const { theme, colors, isDark } = useTheme();
   const user = useStore((s) => s.user);
   const setUser = useStore((s) => s.setUser);
-  const isDarkMode = theme === 'dark';
+  const isDarkMode = isDark;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const bgClass = isDarkMode ? "bg-background-dark" : "bg-gray-100";
-  const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
-  const secondaryTextClass = isDarkMode ? "text-text-secondary" : "text-gray-600";
-  const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-white";
-  const iconColor = isDarkMode ? "white" : "black";
-  const statTileBg = isDarkMode ? "bg-gray-800" : "bg-gray-100";
+  const bgClass = isDarkMode ? "bg-background-dark" : "bg-background-light";
+  const textClass = isDarkMode ? "text-text-primary" : "text-text-light";
+  const secondaryTextClass = isDarkMode ? "text-text-secondary" : "text-subtle-light";
+  const cardBgClass = isDarkMode ? "bg-card-dark" : "bg-card-light";
+  const statTileBg = isDarkMode ? "bg-background-dark" : "bg-background-light";
+  const headerGradient = isDarkMode ? colors.gradients.berryBlend : colors.gradients.oceanBreeze;
 
   const formatNumber = (value?: number | null) => {
     if (value === undefined || value === null) return '—';
@@ -52,6 +55,12 @@ const ProfileScreen = () => {
     ],
     [user?.distance, user?.lifetimeDistance, user?.lifetimeSteps, user?.steps, user?.territories]
   );
+
+  const profileOptions: Array<{ icon: keyof typeof FontAwesome5.glyphMap; text: string }> = [
+    { icon: 'trophy', text: 'My Achievements' },
+    { icon: 'route', text: 'Route History' },
+    { icon: 'user-friends', text: 'Friends & Community' },
+  ];
 
   const handleAvatarUpload = async () => {
     try {
@@ -138,82 +147,149 @@ const ProfileScreen = () => {
 
   return (
     <SafeAreaView className={`flex-1 ${bgClass}`}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
         <View className="px-6 pt-6">
-          <View className={`rounded-3xl p-6 mb-6 shadow-lg bg-gradient-to-br from-primary/95 to-emerald-500 dark:from-primary dark:to-emerald-600`}>
-            <View className="relative">
-              <Image
-                source={{ uri: user?.avatarUrl || "https://i.pravatar.cc/150?u=placeholder" }}
-                className="w-24 h-24 rounded-full mr-4 border-2 border-white/80"
-              />
-              <TouchableOpacity
-                onPress={handleAvatarUpload}
-                className="absolute bottom-0 right-2 bg-white p-2 rounded-full"
+          <Animated.View entering={FadeInUp.duration(600).delay(100)}>
+            <View className="rounded-3xl overflow-hidden mb-6 shadow-xl">
+              <LinearGradient
+                colors={headerGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                className="p-6"
               >
-                <Ionicons name="camera" size={16} color="#00C853" />
-              </TouchableOpacity>
+                <View className="relative flex-row items-center mb-4">
+                  <View className="relative">
+                    <Image
+                      source={{ uri: user?.avatarUrl || "https://i.pravatar.cc/150?u=placeholder" }}
+                      className="w-24 h-24 rounded-full border-4 border-white/80 shadow-lg"
+                    />
+                    <Pressable
+                      onPress={handleAvatarUpload}
+                      className="absolute -bottom-2 -right-2 bg-white/90 dark:bg-black/60 p-2 rounded-full shadow-md active:scale-95"
+                      style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
+                    >
+                      <Ionicons name="camera" size={16} color={colors.accent.primary} />
+                    </Pressable>
+                  </View>
+                  <View className="ml-4 flex-1">
+                    <Text className="text-2xl font-bold tracking-tight" style={{ color: colors.text.primary }}>
+                      {user?.username || 'Runner'}
+                    </Text>
+                    <Text className="text-sm mt-1" style={{ color: colors.text.secondary }}>
+                      {user?.email || 'user@runiverse.com'}
+                    </Text>
+                    <View className="flex-row mt-4">
+                      <View>
+                        <Text className="text-xs uppercase tracking-wide" style={{ color: colors.text.tertiary }}>City</Text>
+                        <Text className="text-lg font-semibold mt-1" style={{ color: colors.text.primary }}>
+                          {user?.city || 'Unknown'}
+                        </Text>
+                      </View>
+                      <View className="ml-6">
+                        <Text className="text-xs uppercase tracking-wide" style={{ color: colors.text.tertiary }}>Territories</Text>
+                        <Text className="text-lg font-semibold mt-1" style={{ color: colors.text.primary }}>
+                          {formatNumber(user?.territories)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+                <Text className="text-sm leading-relaxed mb-4" style={{ color: colors.text.secondary }}>
+                  Every mile is a memory, every run a new discovery in the Runiverse.
+                </Text>
+                <Link href="../edit-profile" asChild>
+                  <Pressable 
+                    className="mt-6 self-start bg-white px-6 py-3 rounded-full shadow-lg active:scale-95"
+                    style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
+                  >
+                    <Text className="font-semibold tracking-wide" style={{ color: colors.accent.primary }}>Edit Profile</Text>
+                  </Pressable>
+                </Link>
+              </LinearGradient>
             </View>
-            <Text className="mt-4 text-sm text-white/80">
-              Every mile is a memory, every run a new discovery in the Runiverse.
-            </Text>
-            <View className="mt-4 flex-row justify-between">
-              <View>
-                <Text className="text-white/60 text-xs">City</Text>
-                <Text className="text-lg font-semibold text-white">{user?.city || 'Unknown'}</Text>
-              </View>
-              <View className="items-end">
-                <Text className="text-white/60 text-xs">Territories</Text>
-                <Text className="text-lg font-semibold text-white">{formatNumber(user?.territories)}</Text>
-              </View>
-            </View>
-            <Link href="../edit-profile" asChild>
-              <TouchableOpacity className="mt-6 self-start bg-white px-4 py-2 rounded-full">
-                <Text className="text-primary font-semibold">Edit profile</Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
+          </Animated.View>
 
           {loading && (
-            <View className="flex-row items-center mb-4">
-              <ActivityIndicator color={iconColor} />
-              <Text className={`ml-3 ${secondaryTextClass}`}>Refreshing profile…</Text>
-            </View>
+            <Animated.View entering={FadeInDown.duration(400)} className="mb-4">
+              <AlertCard
+                type="info"
+                title="Refreshing profile"
+                message="Pulling the latest stats…"
+                leading={<ActivityIndicator color={colors.status.info} />}
+              />
+            </Animated.View>
           )}
 
           {error && (
-            <Text className={`mb-4 ${isDarkMode ? 'text-red-300' : 'text-red-600'}`}>{error}</Text>
+            <Animated.View entering={FadeInDown.duration(400)} className="mb-4">
+              <AlertCard type="error" title="Something went wrong" message={error} />
+            </Animated.View>
           )}
 
-          <View className={`rounded-3xl p-6 mb-6 shadow-md ${cardBgClass}`}>
-            <View className="flex-row justify-between items-center">
-              <Text className={`text-xl font-semibold ${textClass}`}>Progress Overview</Text>
-              <Text className={`text-xs ${secondaryTextClass}`}>Auto-sync keeps stats fresh</Text>
+          <Animated.View entering={FadeInDown.duration(600).delay(200)} className={`rounded-3xl p-6 mb-6 shadow-lg ${cardBgClass}`}>
+            <View className="flex-row justify-between items-center mb-5">
+              <Text className={`text-2xl font-bold ${textClass} tracking-tight`}>Progress Overview</Text>
+              <Text className={`text-xs ${secondaryTextClass} uppercase tracking-wide`}>Live</Text>
             </View>
-            <View className="mt-4 flex-row flex-wrap -mx-2">
-              {stats.map((stat) => (
-                <View key={stat.key} className="w-1/2 px-2 pb-4">
-                  <View className={`rounded-2xl p-4 ${statTileBg} shadow-sm`}>
-                    <Text className={`${secondaryTextClass} text-xs uppercase tracking-wide`}>{stat.label}</Text>
-                    <Text className={`text-2xl font-bold mt-2 ${textClass}`}>{stat.value}</Text>
+            <View className="flex-row flex-wrap -mx-2">
+              {stats.map((stat, idx) => (
+                <Animated.View 
+                  key={stat.key} 
+                  entering={FadeInDown.duration(600).delay(300 + idx * 50)}
+                  className="w-1/2 px-2 pb-4"
+                >
+                  <View
+                    className={`rounded-2xl p-4 ${statTileBg} shadow-sm`}
+                    style={{ borderWidth: 1, borderColor: isDarkMode ? colors.border.medium : colors.border.light }}
+                  >
+                    <Text className={`${secondaryTextClass} text-xs uppercase tracking-wide font-medium`}>{stat.label}</Text>
+                    <Text className={`text-2xl font-bold mt-2 ${textClass} tracking-tight`}>{stat.value}</Text>
                   </View>
-                </View>
+                </Animated.View>
               ))}
             </View>
-          </View>
+          </Animated.View>
 
-          <View className={`rounded-3xl p-6 shadow-md ${cardBgClass}`}>
-            <Text className={`text-xl font-semibold mb-2 ${textClass}`}>Account details</Text>
-            <InfoRow label="Email" value={user?.email || 'Not provided'} isDarkMode={isDarkMode} />
-            <View className="mt-3">
-              <InfoRow label="Member since" value={user ? new Date().getFullYear().toString() : '—'} isDarkMode={isDarkMode} />
+          <Animated.View entering={FadeInDown.duration(600).delay(400)} className={`rounded-3xl p-6 shadow-lg mb-6 ${cardBgClass}`}>
+            <Text className={`text-xl font-semibold mb-4 ${textClass} tracking-tight`}>Account Details</Text>
+            <InfoRow label="Email" value={user?.email || 'Not provided'} />
+            <View className="mt-4">
+              <InfoRow label="Member since" value={user ? new Date().getFullYear().toString() : '—'} />
             </View>
-          </View>
+          </Animated.View>
 
-          <View className={`mt-6 rounded-3xl shadow-md ${cardBgClass}`}>
-            <ProfileOption icon="trophy" text="My Achievements" isDarkMode={isDarkMode} />
-            <ProfileOption icon="route" text="Route History" isDarkMode={isDarkMode} />
-            <ProfileOption icon="user-friends" text="Friends & Community" isDarkMode={isDarkMode} />
-          </View>
+          <Animated.View entering={FadeInDown.duration(600).delay(500)} className={`rounded-3xl shadow-lg overflow-hidden ${cardBgClass}`}>
+            {profileOptions.map((option, idx) => (
+              <ProfileOption
+                key={option.text}
+                icon={option.icon}
+                text={option.text}
+                isDarkMode={isDarkMode}
+                isLast={idx === profileOptions.length - 1}
+              />
+            ))}
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.duration(600).delay(550)} className="mt-6">
+            <Link href="/settings" asChild>
+              <Pressable 
+                className={`rounded-3xl shadow-lg overflow-hidden flex-row items-center justify-between py-5 px-6 ${cardBgClass} active:opacity-80`}
+                style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+              >
+                <View className="flex-row items-center flex-1">
+                  <View className="bg-primary/10 dark:bg-primary/20 p-3 rounded-2xl mr-4">
+                    <Ionicons
+                      name="settings"
+                      size={24}
+                      color={isDarkMode ? colors.accent.hover : colors.accent.primary}
+                    />
+                  </View>
+                  <Text className={`text-lg font-semibold ${textClass}`}>Settings</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={22} color={isDarkMode ? '#9CA3AF' : '#666666'} />
+              </Pressable>
+            </Link>
+          </Animated.View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -224,27 +300,65 @@ interface ProfileOptionProps {
   icon: keyof typeof FontAwesome5.glyphMap;
   text: string;
   isDarkMode: boolean;
+  isLast?: boolean;
 }
 
-const ProfileOption = ({ icon, text, isDarkMode }: ProfileOptionProps) => (
-  <TouchableOpacity className={`flex-row items-center py-4 px-6 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} last:border-b-0`}>
-    <FontAwesome5 name={icon} size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} className="mr-4" />
-    <Text className={`flex-1 text-lg ${isDarkMode ? 'text-text-primary' : 'text-gray-900'}`}>{text}</Text>
-    <Ionicons name="chevron-forward" size={20} color={isDarkMode ? '#A9A9A9' : '#666666'} />
-  </TouchableOpacity>
-);
+const ProfileOption = ({ icon, text, isDarkMode, isLast = false }: ProfileOptionProps) => {
+  const { colors } = useTheme();
+  const borderColor = isDarkMode ? colors.border.medium : colors.border.light;
+  const iconBackground = isDarkMode ? colors.background.tertiary : colors.background.secondary;
+  const iconBorder = isDarkMode ? colors.border.dark : colors.border.light;
+
+  return (
+    <Pressable
+      className="flex-row items-center py-5 px-6"
+      style={({ pressed }) => [{
+        opacity: pressed ? 0.85 : 1,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderColor,
+        backgroundColor: pressed ? colors.overlay.subtle : 'transparent',
+      }]}
+    >
+      <View
+        style={{
+          backgroundColor: iconBackground,
+          padding: 12,
+          borderRadius: 18,
+          marginRight: 16,
+          borderWidth: 1,
+          borderColor: iconBorder,
+        }}
+      >
+        <FontAwesome5
+          name={icon}
+          size={20}
+          color={isDarkMode ? colors.accent.hover : colors.accent.primary}
+        />
+      </View>
+      <Text
+        className="flex-1 text-lg font-medium"
+        style={{ color: colors.text.primary }}
+      >
+        {text}
+      </Text>
+      <Ionicons name="chevron-forward" size={22} color={colors.text.secondary} />
+    </Pressable>
+  );
+};
 
 interface InfoRowProps {
   label: string;
   value: string;
-  isDarkMode: boolean;
 }
 
-const InfoRow = ({ label, value, isDarkMode }: InfoRowProps) => (
-  <View className="flex-row justify-between">
-    <Text className={`${isDarkMode ? 'text-text-secondary' : 'text-gray-500'} text-sm`}>{label}</Text>
-    <Text className={`${isDarkMode ? 'text-text-primary' : 'text-gray-900'} text-sm font-medium`}>{value}</Text>
-  </View>
-);
+const InfoRow = ({ label, value }: InfoRowProps) => {
+  const { colors } = useTheme();
+  return (
+    <View className="flex-row justify-between">
+      <Text className="text-sm" style={{ color: colors.text.secondary }}>{label}</Text>
+      <Text className="text-sm font-medium" style={{ color: colors.text.primary }}>{value}</Text>
+    </View>
+  );
+};
 
 export default ProfileScreen;

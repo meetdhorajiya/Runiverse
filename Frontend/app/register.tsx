@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, Pressable, Image, Alert, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Link } from 'expo-router';
 import CustomInput from '../components/CustomInput';
 import { authService } from '../services/AuthService';
 import { useStore } from '@/store/useStore';
-import profileService from '@/services/profileService';
+import { profileService } from '@/services/profileService';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 export default function RegisterScreen() {
   const router = useRouter();
   const setUser = useStore((s) => s.setUser);
   const user = useStore((s) => s.user);
+  const insets = useSafeAreaInsets();
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -84,35 +86,71 @@ export default function RegisterScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background-dark p-6">
-      <Text className="text-text-primary text-3xl font-bold mt-10">
-        Create Your{'\n'}New Account
-      </Text>
+    <SafeAreaView
+      className="flex-1 bg-background-dark"
+      style={{ paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 20) }}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 48 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Animated.View entering={FadeInUp.duration(600).delay(100)}>
+            <Text className="text-text-primary text-4xl font-bold mt-4 tracking-tight leading-tight">
+              Create Your{"\n"}New Account
+            </Text>
+          </Animated.View>
 
-      {/* Profile Picture */}
-      <View className="items-center my-8">
-        <TouchableOpacity>
-          <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61' }}
-            className="h-24 w-24 rounded-full"
-          />
-        </TouchableOpacity>
-      </View>
+          {/* Profile Picture */}
+          <Animated.View entering={FadeInDown.duration(600).delay(200)} className="items-center my-8">
+            <Pressable
+              className="shadow-xl shadow-primary-green/20"
+              style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] }]}
+            >
+              <Image
+                source={{ uri: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61' }}
+                className="h-28 w-28 rounded-full border-4 border-primary-green/30"
+              />
+              <View className="absolute bottom-0 right-0 bg-primary-green h-10 w-10 rounded-full items-center justify-center border-4 border-background-dark">
+                <Text className="text-2xl">📷</Text>
+              </View>
+            </Pressable>
+          </Animated.View>
 
-      {/* Form */}
-      <CustomInput iconName="account-outline" placeholder="Enter Your Name" value={lastName} onChangeText={setLastName} />
-      <CustomInput iconName="account-circle-outline" placeholder="Enter Username" value={username} onChangeText={setUsername} />
-      <CustomInput iconName="email-outline" placeholder="Enter Email Id" value={email} onChangeText={setEmail} />
-      <CustomInput iconName="phone-outline" placeholder="Mobile Number" value={mobile} onChangeText={setMobile} />
-      <CustomInput iconName="lock-outline" placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
+          {/* Form */}
+          <Animated.View entering={FadeInDown.duration(600).delay(300)} style={{ gap: 12 }}>
+            <CustomInput iconName="account-outline" placeholder="Enter Your Name" value={lastName} onChangeText={setLastName} />
+            <CustomInput iconName="account-circle-outline" placeholder="Enter Username" value={username} onChangeText={setUsername} />
+            <CustomInput iconName="email-outline" placeholder="Enter Email Id" value={email} onChangeText={setEmail} />
+            <CustomInput iconName="phone-outline" placeholder="Mobile Number" value={mobile} onChangeText={setMobile} />
+            <CustomInput iconName="lock-outline" placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
+          </Animated.View>
 
-      <TouchableOpacity onPress={handleRegister} disabled={loading} className="bg-primary-green rounded-xl p-4 mt-8 items-center">
-        {loading ? <ActivityIndicator color="#000" /> : <Text className="text-background-dark font-bold text-lg">NEXT</Text>}
-      </TouchableOpacity>
-      <View className="flex-row justify-center mt-4">
-        <Text className="text-text-secondary">Already have an account? </Text>
-        <Link href="/login"><Text className="text-primary-green font-bold">Login</Text></Link>
-      </View>
+          <Animated.View entering={FadeInDown.duration(600).delay(400)}>
+            <Pressable
+              onPress={handleRegister}
+              disabled={loading}
+              className="bg-primary-green rounded-2xl p-5 mt-10 items-center shadow-xl shadow-primary-green/30 active:scale-98"
+              style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+            >
+              {loading ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <Text className="text-background-dark font-bold text-lg tracking-wide">CREATE ACCOUNT</Text>
+              )}
+            </Pressable>
+            <View className="flex-row justify-center mt-6">
+              <Text className="text-text-secondary">Already have an account? </Text>
+              <Link href="/login"><Text className="text-primary-green font-bold">Login</Text></Link>
+            </View>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

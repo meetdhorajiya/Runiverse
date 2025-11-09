@@ -25,7 +25,7 @@ export function JoinableChallengeCard({ challenge }: { challenge: Challenge }) {
             {showConfetti && (
                 <Confetti trigger={showConfetti} onComplete={() => setShowConfetti(false)} />
             )}
-            // If already joined, render the progress card
+            {/* If already joined, render the progress card */}
             {joined ? (
                 <ChallengeCard challenge={challenge} />
             ) : (

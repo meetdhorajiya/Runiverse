@@ -1,44 +1,50 @@
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef } from 'react';
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect } from "react";
+import React, { useEffect, useRef } from 'react';
 import axios from "axios";
+import { authService } from "@/services/AuthService";
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 
 // Provide a fallback demo video URL if env not set. Replace with your own.
 // const VIDEO_URL = process.env.EXPO_PUBLIC_WELCOME_VIDEO_URL || 'https://static-assets.mapbox.com/www/videos/mobile-maps-sdk/section_hero/video@720p.webm';
 const VIDEO_URL = 'https://drive.google.com/uc?export=download&id=1Z1CW9f6LJ3wJ8xJY4fdodDxTRvEAzjp7';
 
 export default function WelcomeScreen() {
-  const { theme } = useTheme();
-  const isDarkMode = theme === 'dark';
+  const { isDark, colors } = useTheme();
+  const isDarkMode = isDark;
   const videoRef = useRef<Video | null>(null);
   const router = useRouter();
 
   useEffect(() => {
+    let isMounted = true;
+
     const checkAuth = async () => {
       try {
-        const token = await AsyncStorage.getItem("token");
-        if (token) {
-          // ✅ Set axios header globally
+        await authService.hydrate();
+        const token = authService.getToken();
+        if (token && isMounted) {
           axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-          // ✅ Redirect user straight to main app
           router.replace("/(tabs)");
         }
       } catch (err) {
         console.warn("Auth check failed:", err);
       }
     };
+
     checkAuth();
-  }, []);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
   return (
-    <SafeAreaView className={isDarkMode ? 'flex-1 bg-background-dark' : 'flex-1 bg-black'}>
+    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background.primary }}>
       <View className="flex-1">
         {/* Background Video */}
         <Video
@@ -54,7 +60,7 @@ export default function WelcomeScreen() {
 
         {/* Darken + vignette overlays */}
         <LinearGradient
-          colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.40)', 'rgba(0,0,0,1)']}
+          colors={isDarkMode ? [colors.overlay.scrim, colors.overlay.subtle, '#000000'] : [colors.overlay.scrim, colors.overlay.subtle, '#0A0A0A']}
           locations={[0, 0.55, 1]}
           style={StyleSheet.absoluteFill}
         />
@@ -62,33 +68,53 @@ export default function WelcomeScreen() {
 
         {/* Content */}
         <View className="flex-1 p-6 justify-end">
-          <View className="mb-12" style={{ gap: 14 }}>
-            <Text className="text-4xl font-bold text-gray-300 leading-tight">
+          <Animated.View 
+            entering={FadeInUp.duration(800).delay(200)}
+            className="mb-12" 
+            style={{ gap: 14 }}
+          >
+            <Text className="text-5xl font-bold leading-tight tracking-tight" style={{ color: colors.text.primary }}>
               Run. Conquer.
               {"\n"}Own Your World.
             </Text>
-            <Text className="text-base text-gray-400">
+            <Text className="text-lg leading-relaxed" style={{ color: colors.text.secondary }}>
               Transform every step into progress. Capture territory, climb leaderboards and grow stronger with the community that runs the Runiverse.
             </Text>
-            <Text className="text-xs uppercase tracking-widest text-gray-500">
+            <Text className="text-xs uppercase tracking-widest font-medium" style={{ color: colors.text.tertiary }}>
               Seamless tracking • Territory strategy • Social motivation
             </Text>
-          </View>
+          </Animated.View>
 
           {/* Progress indicators + CTA */}
-          <View className="flex-row justify-between items-center mb-2">
+          <Animated.View 
+            entering={FadeInDown.duration(600).delay(400)}
+            className="flex-row justify-between items-center mb-2"
+          >
             <View className="flex-row items-center" style={{ gap: 6 }}>
-              <View className="h-2 w-6 bg-primary-green rounded-full" />
-              <View className="h-2 w-2 bg-neutral-500/60 rounded-full" />
-              <View className="h-2 w-2 bg-neutral-500/40 rounded-full" />
+              <View
+                className="h-2 w-8 rounded-full"
+                style={{ backgroundColor: colors.accent.primary, shadowColor: colors.accent.primary, shadowOpacity: 0.35, shadowRadius: 6 }}
+              />
+              <View className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.text.tertiary + '80' }} />
+              <View className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.text.tertiary + '55' }} />
             </View>
-            <TouchableOpacity 
+            <Pressable 
               onPress={() => router.push('/login')}
-              className="bg-primary-green h-16 w-16 rounded-full items-center justify-center shadow-lg shadow-black/40"
+              className="h-16 w-16 rounded-full items-center justify-center active:scale-95"
+              style={({ pressed }) => [
+                {
+                  opacity: pressed ? 0.9 : 1,
+                  transform: [{ scale: pressed ? 0.95 : 1 }],
+                  backgroundColor: colors.accent.primary,
+                  shadowColor: colors.accent.primary,
+                  shadowOpacity: 0.4,
+                  shadowRadius: 12,
+                },
+              ]}
             >
-              <FontAwesome name="arrow-right" size={24} color="black" />
-            </TouchableOpacity>
-          </View>
+              <FontAwesome name="arrow-right" size={26} color={isDarkMode ? colors.text.primary : '#FFFFFF'} />
+            </Pressable>
+          </Animated.View>
         </View>
       </View>
     </SafeAreaView>

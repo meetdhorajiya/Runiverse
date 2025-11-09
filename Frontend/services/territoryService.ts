@@ -101,9 +101,16 @@ const unwrapSingleResponse = (response: ApiSingleResponse): any => {
 };
 
 export const territoryService = {
-  async fetchTerritories(): Promise<TerritoryFeature[]> {
-    const raw = await api.get<ApiListResponse>("/api/territories");
-    return unwrapListResponse(raw).map(territoryToFeature);
+  async fetchTerritories(scope: 'all' | 'user' = 'all'): Promise<TerritoryFeature[]> {
+    try {
+      await authService.hydrate();
+      const token = authService.getToken() || undefined;
+      const raw = await api.get<ApiListResponse>(`/api/territories?scope=${scope}`, token);
+      return unwrapListResponse(raw).map(territoryToFeature);
+    } catch (error) {
+      console.error("Failed to fetch territories:", error);
+      return [];
+    }
   },
 
   async claimTerritory(input: ClaimTerritoryInput): Promise<TerritoryFeature> {

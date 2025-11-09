@@ -10,47 +10,47 @@ module.exports = {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#6A5ACD', // SlateBlue
-          light: '#836FFF',
-          dark: '#483D8B',
+          DEFAULT: '#4B5563',
+          light: '#6B7280',
+          dark: '#374151',
         },
         secondary: {
-          DEFAULT: '#4682B4', // SteelBlue
+          DEFAULT: '#6B7280',
         },
         success: {
-          DEFAULT: '#3CB371', // MediumSeaGreen
+          DEFAULT: '#10B981',
         },
         warning: {
-          DEFAULT: '#FFA500', // Orange
+          DEFAULT: '#F59E0B',
         },
         danger: {
-          DEFAULT: '#DC143C', // Crimson
+          DEFAULT: '#EF4444',
         },
-        'background-dark': '#1C1C1E', // A dark charcoal color
-        'primary-green': '#A8E063',   // A vibrant lime green
-        'primary-yellow': '#F3B63A',  // A warm yellow/orange for register
-        'input-bg': '#2C2C2E',       // A slightly lighter dark for inputs
-        'text-primary': '#FFFFFF',
-        'text-secondary': '#8E8E93', // A muted gray for subtitles
+        'background-dark': '#0A0A0A',
+        'primary-green': '#10B981',
+        'primary-yellow': '#F59E0B',
+        'input-bg': '#F1F3F5',
+        'text-primary': '#F5F5F5',
+        'text-secondary': '#A3A3A3',
         background: {
-          light: '#F8F9FA',
-          dark: '#121212',
+          light: '#FFFFFF',
+          dark: '#0A0A0A',
         },
         card: {
           light: '#FFFFFF',
-          dark: '#1E1E1E',
+          dark: '#262626',
         },
         text: {
-          light: '#212529',
-          dark: '#E5E7EB',
+          light: '#1A1A1A',
+          dark: '#F5F5F5',
         },
         subtle: {
-            light: '#6C757D',
-            dark: '#9CA3AF',
+          light: '#6B7280',
+          dark: '#737373',
         },
         border: {
-            light: '#DEE2E6',
-            dark: '#374151',
+          light: '#E5E7EB',
+          dark: '#404040',
         },
       },
       borderRadius: {

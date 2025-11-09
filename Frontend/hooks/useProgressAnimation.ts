@@ -1,21 +1,20 @@
-import { useEffect, useRef } from "react";
-import { Animated } from "react-native";
+import { useEffect } from "react";
+import Animated, { Easing, useSharedValue, withTiming } from "react-native-reanimated";
 
 /**
  * Smoothly animates progress changes for bars or loaders.
  * @param value - current progress (0–100)
- * @returns animatedValue (use with style: { width: animatedValue.interpolate(...) })
+ * @returns shared value (use with useAnimatedStyle to derive width/opacity)
  */
 export const useProgressAnimation = (value: number) => {
-  const animatedValue = useRef(new Animated.Value(value)).current;
+  const animatedValue = useSharedValue(value);
 
   useEffect(() => {
-    Animated.timing(animatedValue, {
-      toValue: value,
-      duration: 700,
-      useNativeDriver: false,
-    }).start();
-  }, [value]);
+    animatedValue.value = withTiming(value, {
+      duration: 600,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [animatedValue, value]);
 
   return animatedValue;
 };

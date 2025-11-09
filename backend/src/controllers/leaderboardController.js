@@ -8,7 +8,8 @@ const serializeGlobalLeaderboard = (users) =>
   users.map((user, index) => ({
     userId: user._id?.toString?.() ?? user._id,
     username: user.username,
-    avatar: user.avatar ?? null,
+    avatar: user.avatarUrl ?? user.avatar ?? null,
+    avatarUrl: user.avatarUrl ?? user.avatar ?? null,
     city: user.city ?? null,
     steps: user.steps ?? 0,
     distance: user.distance ?? 0,
@@ -23,7 +24,7 @@ const fetchGlobalLeaderboard = async (limit = GLOBAL_LIMIT) => {
   const users = await User.find()
     .sort({ distance: -1, steps: -1, lifetimeDistance: -1 })
     .limit(limit)
-    .select("username avatar distance steps city lifetimeSteps lifetimeDistance")
+    .select("username avatar avatarUrl distance steps city lifetimeSteps lifetimeDistance")
     .lean();
 
   return serializeGlobalLeaderboard(users ?? []);
@@ -51,7 +52,7 @@ export const getCityLeaderboard = async (req, res) => {
     const cityRegex = new RegExp(`^${escapeForRegex(rawCity)}$`, "i");
 
     const usersInCity = await User.find({ city: cityRegex })
-      .select("username avatar steps city territories distance lifetimeSteps lifetimeDistance")
+      .select("username avatar avatarUrl steps city territories distance lifetimeSteps lifetimeDistance")
       .limit(CITY_LIMIT)
       .lean();
 
@@ -63,7 +64,8 @@ export const getCityLeaderboard = async (req, res) => {
         normalizedUsers.push({
           _id: req.user._id,
           username: req.user.username,
-          avatar: req.user.avatar ?? null,
+          avatar: req.user.avatarUrl ?? req.user.avatar ?? null,
+          avatarUrl: req.user.avatarUrl ?? req.user.avatar ?? null,
           city: req.user.city ?? null,
           steps: req.user.steps ?? 0,
           territories: req.user.territories ?? 0,
@@ -105,7 +107,8 @@ export const getCityLeaderboard = async (req, res) => {
         return {
           userId: key,
           username: user.username,
-          avatar: user.avatar ?? null,
+          avatar: user.avatarUrl ?? user.avatar ?? null,
+          avatarUrl: user.avatarUrl ?? user.avatar ?? null,
           city: user.city ?? null,
           steps: user.steps ?? 0,
           distance: user.distance ?? 0,

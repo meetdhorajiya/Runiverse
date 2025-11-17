@@ -1,0 +1,1053 @@
+// Map.tsx
+// React Native / Expo TypeScript component for run tracking.
+// Replace your existing Map.tsx with this file (adapt imports/styles as needed).
+
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Platform,
+} from "react-native";
+import MapView, { Polyline, Marker } from "react-native-maps";
+import * as Location from "expo-location";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import TerrotorieEngine, { Position } from "./TerrotorieEngine";
+
+const ROUTE_STORAGE_KEY = "runiverse:inprogress_route_v1";
+
+// CONFIG
+const MIN_TIME_BETWEEN_UPDATES_MS = 1000;
+const MIN_ACCURACY_METERS = 50; // ignore points with worse accuracy
+const MAX_REASONABLE_SPEED_MPS = 12; // reject spikes (m/s)
+const CLOSURE_SNAP_METERS = 12; // used for snapping closure locally (engine also uses)
+const POLYLINE_SIMPLIFY_TOL = 0.00001;
+
+type RawPoint = { lat: number; lon: number; ts: number };
+
+// Simple Haversine (meters)
+function haversineMeters(aLon: number, aLat: number, bLon: number, bLat: number) {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLon = toRad(bLon - aLon);
+  const lat1 = toRad(aLat);
+  const lat2 = toRad(bLat);
+  const aa =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+}
+
+// Simple 2D Kalman (lightweight, integrated)
+class KalmanFilter2D {
+  private x: number[] | null = null; // [lat, lon, vlat, vlon]
+  private lastT: number | null = null;
+  Rpos = 5e-6; // measurement noise (degrees)
+  Qacc = 1e-7;
+
+  update(lat: number, lon: number, timestamp: number) {
+    if (!this.x) {
+      this.x = [lat, lon, 0, 0];
+      this.lastT = timestamp;
+      return [lat, lon];
+    }
+    const dt = Math.max(1e-3, (timestamp - (this.lastT || timestamp)) / 1000);
+    // predict
+    const [plat, plon, vlat, vlon] = this.x;
+    const predLat = plat + vlat * dt;
+    const predLon = plon + vlon * dt;
+
+    // measurement residual
+    const rLat = lat - predLat;
+    const rLon = lon - predLon;
+
+    // pseudo gain (lightweight)
+    const Klat = 0.5;
+    const Klon = 0.5;
+
+    const newLat = predLat + Klat * rLat;
+    const newLon = predLon + Klon * rLon;
+
+    // update velocities
+    const newVlat = 0.6 * vlat + 0.4 * (rLat / dt);
+    const newVlon = 0.6 * vlon + 0.4 * (rLon / dt);
+
+    this.x = [newLat, newLon, newVlat, newVlon];
+    this.lastT = timestamp;
+
+    return [newLat, newLon];
+  }
+}
+
+// Main Map Component
+export default function MapScreen() {
+  const [isTracking, setIsTracking] = useState(false);
+  const [route, setRoute] = useState<Position[]>([]);
+  const rawRef = useRef<RawPoint[]>([]);
+  const processedRef = useRef<Position[]>([]);
+  const kfRef = useRef<KalmanFilter2D | null>(null);
+  const watchRef = useRef<any>(null);
+  const engineRef = useRef<TerrotorieEngine | null>(null);
+
+  // init engine on mount
+  useEffect(() => {
+    engineRef.current = new TerrotorieEngine({
+      minDistanceMeters: 6,
+      simplifyTolerance: POLYLINE_SIMPLIFY_TOL,
+      minSegmentSamples: 6,
+      minLoopAreaMeters: 10,
+    });
+    hydrateSavedRoute();
+    return () => {
+      if (watchRef.current) {
+        watchRef.current.remove();
+      }
+    };
+  }, []);
+
+  // Hydrate a persisted in-progress route if exists (but DON'T auto-start)
+  const hydrateSavedRoute = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(ROUTE_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { route: Position[]; rawPoints?: RawPoint[] };
+        if (parsed?.route?.length) {
+          processedRef.current = parsed.route;
+          rawRef.current = parsed.rawPoints ?? [];
+          setRoute(parsed.route);
+          // seed engine so it can continue
+          engineRef.current?.seedRoute(parsed.route);
+        }
+      }
+    } catch (e) {
+      console.warn("hydrateSavedRoute error", e);
+    }
+  }, []);
+
+  // persist snapshot of in-progress route
+  const persistRoute = useCallback(async (routeToSave: Position[], raw?: RawPoint[]) => {
+    try {
+      const payload = {
+        route: routeToSave,
+        rawPoints: raw ?? rawRef.current,
+        savedAt: new Date().toISOString(),
+      };
+      await AsyncStorage.setItem(ROUTE_STORAGE_KEY, JSON.stringify(payload));
+    } catch (e) {
+      console.warn("persistRoute failed", e);
+    }
+  }, []);
+
+  // handle stop: final smoothing, finalize engine, save, optionally submit to server
+  const finalizeAndStop = useCallback(async () => {
+    if (watchRef.current) {
+      watchRef.current.remove();
+      watchRef.current = null;
+    }
+    setIsTracking(false);
+
+    // final smoothing pass (small moving average)
+    const p = processedRef.current;
+    const smoothed = movingAverageSmooth(p, 3);
+    processedRef.current = smoothed;
+    setRoute(smoothed);
+
+    // persist
+    await persistRoute(smoothed);
+
+    // finalize engine to detect any missed loops
+    const engine = engineRef.current;
+    if (engine) {
+      engine.seedRoute(smoothed);
+      const result = engine.finalizeAfterRun();
+      if (result?.createdTerritory) {
+        // TODO: submit to server using your service (not included).
+        // Example: await territoryService.claimTerritory(payload)
+        console.log("Territory created locally at finalize:", result.createdTerritory);
+      }
+    }
+  }, [persistRoute]);
+
+  // start tracking: request permission, init kalman, start watch
+  const startTracking = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Location permission required");
+        return;
+      }
+
+      // reset buffers if starting fresh
+      rawRef.current = [];
+      processedRef.current = [];
+      setRoute([]);
+      kfRef.current = new KalmanFilter2D();
+      engineRef.current?.reset();
+
+      watchRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: MIN_TIME_BETWEEN_UPDATES_MS,
+          distanceInterval: 1,
+        },
+        (loc) => {
+          onLocationReceived(loc);
+        }
+      );
+      setIsTracking(true);
+    } catch (e) {
+      console.warn("startTracking error", e);
+    }
+  }, []);
+
+  // stop handler
+  const stopTracking = useCallback(async () => {
+    await finalizeAndStop();
+  }, [finalizeAndStop]);
+
+  // main location handler while tracking (smoothing, spike rejection, engine feed)
+  const onLocationReceived = useCallback(async (loc: Location.LocationObject) => {
+    try {
+      const lat = loc.coords.latitude;
+      const lon = loc.coords.longitude;
+      const ts = loc.timestamp ?? Date.now();
+
+      // store raw
+      rawRef.current.push({ lat, lon, ts });
+
+      // if accuracy too poor skip
+      if (loc.coords.accuracy && loc.coords.accuracy > MIN_ACCURACY_METERS) {
+        return;
+      }
+
+      // Kalman filter smoothing
+      const kf = kfRef.current!;
+      const [sLat, sLon] = kf ? kf.update(lat, lon, ts) : [lat, lon];
+
+      // spike rejection based on last processed point
+      const last = processedRef.current[processedRef.current.length - 1];
+      if (last) {
+        const d = haversineMeters(last[0], last[1], sLon, sLat);
+        const dt = Math.max(1, (ts - (rawRef.current[rawRef.current.length - 2]?.ts || ts)) / 1000);
+        const speed = d / dt;
+        if (speed > MAX_REASONABLE_SPEED_MPS) {
+          // treat as spike and ignore
+          console.warn("Ignored spike:", speed, "m/s");
+          return;
+        }
+      }
+
+      // append processed point (position stored as [lon, lat] for engine compatibility)
+      processedRef.current.push([sLon, sLat]);
+      setRoute([...processedRef.current]); // update UI
+
+      // persist periodically (cheap)
+      if (processedRef.current.length % 10 === 0) {
+        await persistRoute(processedRef.current, rawRef.current);
+      }
+
+      // feed territory engine
+      const engine = engineRef.current;
+      if (engine) {
+        const result = engine.handleNewCoordinate({ latitude: sLat, longitude: sLon, timestamp: ts });
+        if (result?.routeChanged) {
+          setRoute(result.route as Position[]);
+          // persist on meaningful route change
+          await persistRoute(result.route as Position[], rawRef.current);
+        }
+        if (result?.createdTerritory) {
+          // territory detected mid-run; you can optionally auto-submit or alert user
+          console.log("Created territory mid-run:", result.createdTerritory);
+        }
+      }
+    } catch (err) {
+      console.warn("onLocationReceived error", err);
+    }
+  }, [persistRoute]);
+
+  // small moving average smoothing helper
+  function movingAverageSmooth(points: Position[], window = 3): Position[] {
+    if (points.length < window) return points.slice();
+    const out: Position[] = [];
+    for (let i = 0; i < points.length; i++) {
+      let count = 0;
+      let sumLon = 0;
+      let sumLat = 0;
+      for (let j = Math.max(0, i - Math.floor(window / 2)); j <= Math.min(points.length - 1, i + Math.floor(window / 2)); j++) {
+        sumLon += points[j][0];
+        sumLat += points[j][1];
+        count++;
+      }
+      out.push([sumLon / count, sumLat / count]);
+    }
+    return out;
+  }
+
+  return (
+    <View style={styles.container}>
+      <MapView
+        style={styles.map}
+        showsUserLocation
+        followsUserLocation={false}
+        initialRegion={{
+          latitude: route.length ? route[0][1] : 21.1702,
+          longitude: route.length ? route[0][0] : 72.8311,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }}
+      >
+        {route.length > 0 && (
+          <Polyline
+            coordinates={route.map(([lon, lat]) => ({ latitude: lat, longitude: lon }))}
+            strokeColor="#3b82f6"
+            strokeWidth={4}
+          />
+        )}
+        {route.length > 0 && (
+          <Marker coordinate={{ latitude: route[route.length - 1][1], longitude: route[route.length - 1][0] }}>
+            <View style={styles.marker}>
+              <Text style={{ color: "#fff", fontWeight: "700" }}>●</Text>
+            </View>
+          </Marker>
+        )}
+      </MapView>
+
+      <View style={styles.controls}>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: isTracking ? "#ef4444" : "#10b981" }]}
+          onPress={() => {
+            if (isTracking) stopTracking(); else startTracking();
+          }}
+        >
+          <Text style={styles.buttonText}>{isTracking ? "Stop" : "Start"}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: "#3b82f6" }]}
+          onPress={() => {
+            // quick manual persist/submit action placeholder
+            persistRoute(processedRef.current, rawRef.current);
+            Alert.alert("Route saved locally");
+          }}
+        >
+          <Text style={styles.buttonText}>Save</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#fff" },
+  map: { flex: 1 },
+  controls: {
+    position: "absolute",
+    bottom: 24,
+    left: 24,
+    right: 24,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  button: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 10,
+    elevation: 3,
+  },
+  buttonText: { color: "#fff", fontWeight: "700" },
+  marker: {
+    backgroundColor: "#111827",
+    borderRadius: 12,
+    padding: 6,
+  },
+});
+
+territoryEngin.ts ------------------------>
+// TerrotorieEngine.ts — TURF GEOMETRY VERSION
+// Full, production-ready loop detection, snapping, and polygon creation.
+// Uses Turf for accurate geospatial math.
+
+import {
+  point,
+  lineString,
+  polygon,
+  Feature,
+  Position as TurfPosition,
+  featureCollection,
+} from "@turf/helpers";
+
+import lineIntersect from "@turf/line-intersect";
+import nearestPointOnLine from "@turf/nearest-point-on-line";
+import simplify from "@turf/simplify";
+import area from "@turf/area";
+import length from "@turf/length";
+import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
+
+// ------------------ Types ------------------
+
+export type Position = [number, number]; // [lon, lat]
+
+export interface HandleResult {
+  routeChanged: boolean;
+  route: Position[];
+  territories: any[];
+  createdTerritory?: any;
+  mergedTerritory?: any;
+}
+
+export interface EngineConfig {
+  minDistanceMeters: number;
+  simplifyTolerance: number;
+  minSegmentSamples: number;
+  minLoopAreaMeters: number;
+}
+
+// ------------------ Helpers ------------------
+
+// Remove sequential duplicates
+function dedupeSequentialPositions(points: Position[], tol = 1e-7): Position[] {
+  if (points.length === 0) return [];
+  const out = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    if (Math.abs(a[0] - b[0]) > tol || Math.abs(a[1] - b[1]) > tol) {
+      out.push(b);
+    }
+  }
+  return out;
+}
+
+// Ensure polygon ring is closed
+function ensureClosedRing(ring: Position[]): Position[] {
+  if (!ring.length) return ring;
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    return [...ring, first];
+  }
+  return ring;
+}
+
+// Build GeoJSON polygon territory wrapper
+function makeTerritory(ring: Position[]) {
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: {
+      type: "Polygon",
+      coordinates: [ring],
+    },
+  };
+}
+
+// ------------------ Main Class ------------------
+
+export default class TerrotorieEngine {
+  config: EngineConfig;
+  route: Position[] = [];
+  territories: any[] = [];
+
+  constructor(config?: Partial<EngineConfig>) {
+    this.config = {
+      minDistanceMeters: config?.minDistanceMeters ?? 6,
+      simplifyTolerance: config?.simplifyTolerance ?? 0.00001,
+      minSegmentSamples: config?.minSegmentSamples ?? 6,
+      minLoopAreaMeters: config?.minLoopAreaMeters ?? 10,
+    };
+  }
+
+  reset() {
+    this.route = [];
+    this.territories = [];
+  }
+
+  seedRoute(pts: Position[]) {
+    this.route = pts.slice();
+  }
+
+  // -----------------------------------------------
+  // INTERSECTION USING TURF
+  // -----------------------------------------------
+  private findExactIntersection(
+    A: Position,
+    B: Position,
+    C: Position,
+    D: Position
+  ): Position | null {
+    const res = lineIntersect(lineString([A, B]), lineString([C, D]));
+    if (res.features.length > 0) {
+      const inter = res.features[0];
+      const coord = inter.geometry.coordinates as Position;
+      return [coord[0], coord[1]];
+    }
+    return null;
+  }
+
+  // -----------------------------------------------
+  // PROXIMITY SNAP USING TURF
+  // -----------------------------------------------
+  private findProximityClosure(lastIdx: number) {
+    const lastPt = this.route[lastIdx];
+    const threshold = Math.max(this.config.minDistanceMeters * 1.4, 10);
+    const tailGuard = Math.max(4, this.config.minSegmentSamples);
+
+    // 1) Vertex proximity
+    for (let i = 0; i < lastIdx - tailGuard; i++) {
+      const pt = this.route[i];
+      const dist = length(
+        lineString([
+          [pt[0], pt[1]],
+          [lastPt[0], lastPt[1]],
+        ]),
+        { units: "meters" }
+      );
+
+      if (dist <= threshold) {
+        return { type: "vertex", index: i, coord: pt };
+      }
+    }
+
+    // 2) Nearest point projection on segment
+    for (let i = 0; i < lastIdx - tailGuard - 1; i++) {
+      const seg = lineString([this.route[i], this.route[i + 1]]);
+      const proj = nearestPointOnLine(seg, point(lastPt));
+
+      if (proj.properties && typeof proj.properties.dist === "number") {
+        if (proj.properties.dist <= threshold) {
+          return {
+            type: "segment",
+            index: i,
+            coord: proj.geometry.coordinates as Position,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // -----------------------------------------------
+  // BUILD LOOP
+  // -----------------------------------------------
+  private buildLoop(intersection: Position, startIndex: number): Position[] | null {
+    const loop: Position[] = [];
+    loop.push(intersection);
+
+    for (let i = startIndex; i < this.route.length; i++) {
+      loop.push(this.route[i]);
+    }
+
+    loop.push(intersection);
+
+    let ring = ensureClosedRing(loop);
+    ring = dedupeSequentialPositions(ring);
+
+    if (ring.length < 4) return null;
+
+    // TURF simplify (Douglas–Peucker)
+    const simplified = simplify(polygon([ring]), {
+      tolerance: this.config.simplifyTolerance,
+      highQuality: false,
+    });
+
+    const finalRing =
+      simplified.geometry.type === "Polygon"
+        ? simplified.geometry.coordinates[0]
+        : ring;
+
+    return ensureClosedRing(finalRing);
+  }
+
+  // -----------------------------------------------
+  // EVALUATE TERRITORY AGAINST EXISTING ONES
+  // -----------------------------------------------
+  private evaluateTerritory(feature: any) {
+    const poly = feature.geometry;
+
+    const polyArea = area(feature); // accurate m²
+
+    if (polyArea < this.config.minLoopAreaMeters) {
+      return { action: "ignore" };
+    }
+
+    // TODO: merging logic if needed (booleanIntersects, difference, union)
+    return { action: "add", feature: { ...feature, properties: { area: polyArea } } };
+  }
+
+  // -----------------------------------------------
+  // MAIN INCOMING COORDINATE HANDLER
+  // -----------------------------------------------
+  public handleNewCoordinate(coord: {
+    latitude: number;
+    longitude: number;
+    timestamp?: number;
+  }): HandleResult {
+    const pos: Position = [coord.longitude, coord.latitude];
+
+    const last = this.route[this.route.length - 1];
+    if (last && last[0] === pos[0] && last[1] === pos[1]) {
+      return {
+        routeChanged: false,
+        route: [...this.route],
+        territories: [...this.territories],
+      };
+    }
+
+    // Append
+    this.route.push(pos);
+
+    if (this.route.length < this.config.minSegmentSamples) {
+      return {
+        routeChanged: true,
+        route: [...this.route],
+        territories: [...this.territories],
+      };
+    }
+
+    const lastIdx = this.route.length - 1;
+
+    // 1) TURF EXACT INTERSECTIONS
+    const A = this.route[lastIdx - 1];
+    const B = this.route[lastIdx];
+
+    for (let i = 0; i < lastIdx - 2; i++) {
+      const C = this.route[i];
+      const D = this.route[i + 1];
+
+      const inter = this.findExactIntersection(A, B, C, D);
+
+      if (inter) {
+        const loop = this.buildLoop(inter, i + 1);
+        if (loop) {
+          const terr = makeTerritory(loop);
+          const evalRes = this.evaluateTerritory(terr);
+
+          if (evalRes.action === "add") {
+            this.territories.push(evalRes.feature);
+
+            return {
+              routeChanged: true,
+              route: [...this.route],
+              territories: [...this.territories],
+              createdTerritory: evalRes.feature,
+            };
+          }
+        }
+      }
+    }
+
+    // 2) TURF NEAREST-PROJECTION SNAP (closing loop)
+    const prox = this.findProximityClosure(lastIdx);
+    if (prox) {
+      const intersection = prox.coord;
+      const startIndex = prox.type === "vertex" ? prox.index : prox.index + 1;
+
+      const loop = this.buildLoop(intersection, startIndex);
+      if (loop) {
+        const terr = makeTerritory(loop);
+        const evalRes = this.evaluateTerritory(terr);
+
+        if (evalRes.action === "add") {
+          this.territories.push(evalRes.feature);
+
+          return {
+            routeChanged: true,
+            route: [...this.route],
+            territories: [...this.territories],
+            createdTerritory: evalRes.feature,
+          };
+        }
+      }
+    }
+
+    return {
+      routeChanged: true,
+      route: [...this.route],
+      territories: [...this.territories],
+    };
+  }
+
+  // -----------------------------------------------
+  // FINAL PASS AT STOP (MORE ACCURATE LOOP DETECTION)
+  // -----------------------------------------------
+  public finalizeAfterRun(): HandleResult {
+    const n = this.route.length - 1;
+    if (n < this.config.minSegmentSamples) {
+      return {
+        routeChanged: false,
+        route: [...this.route],
+        territories: [...this.territories],
+      };
+    }
+
+    // Scan all segment pairs (full check)
+    for (let j = 0; j < n - 2; j++) {
+      for (let i = j + 2; i < n; i++) {
+        const A = this.route[j];
+        const B = this.route[j + 1];
+        const C = this.route[i];
+        const D = this.route[i + 1];
+
+        const inter = this.findExactIntersection(A, B, C, D);
+
+        if (inter) {
+          const loop = this.buildLoop(inter, j + 1);
+          if (loop) {
+            const terr = makeTerritory(loop);
+            const evalRes = this.evaluateTerritory(terr);
+
+            if (evalRes.action === "add") {
+              this.territories.push(evalRes.feature);
+              return {
+                routeChanged: true,
+                route: [...this.route],
+                territories: [...this.territories],
+                createdTerritory: evalRes.feature,
+              };
+            }
+          }
+        } else {
+          // Proximity fallback
+          const proj = nearestPointOnLine(lineString([A, B]), point(C));
+          if (proj.properties && proj.properties.dist <= this.config.minDistanceMeters * 1.5) {
+            const loop = this.buildLoop(
+              proj.geometry.coordinates as Position,
+              j + 1
+            );
+
+            if (loop) {
+              const terr = makeTerritory(loop);
+              const evalRes = this.evaluateTerritory(terr);
+
+              if (evalRes.action === "add") {
+                this.territories.push(evalRes.feature);
+                return {
+                  routeChanged: true,
+                  route: [...this.route],
+                  territories: [...this.territories],
+                  createdTerritory: evalRes.feature,
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      routeChanged: false,
+      route: [...this.route],
+      territories: [...this.territories],
+    };
+  }
+}
+Backend --------------------------------->
+✅ 1. Mongoose Model — models/Territory.js
+// models/Territory.js
+
+const mongoose = require("mongoose");
+
+const TerritorySchema = new mongoose.Schema(
+  {
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+
+    // GeoJSON Polygon (required)
+    geometry: {
+      type: { type: String, enum: ["Polygon"], required: true },
+      coordinates: {
+        type: [[[Number]]], // [ [ [lon, lat], ... ] ]
+        required: true,
+      },
+    },
+
+    // Encoded polyline of processed route (optional but highly recommended)
+    encodedPolyline: { type: String },
+
+    // Optional: save full processed and raw points for debugging / history
+    processedPoints: {
+      type: [
+        {
+          lon: Number,
+          lat: Number,
+          ts: { type: Date },
+        },
+      ],
+      default: [],
+    },
+
+    rawPoints: {
+      type: [
+        {
+          lon: Number,
+          lat: Number,
+          ts: { type: Date },
+        },
+      ],
+      default: [],
+    },
+
+    // Metadata
+    area: Number, // m²
+    perimeter: Number, // meters
+    name: { type: String },
+    createdAt: { type: Date, default: Date.now },
+
+    deviceInfo: {
+      platform: String,
+      appVersion: String,
+    },
+  },
+  { timestamps: true }
+);
+
+// Enable GeoJSON spatial functions
+TerritorySchema.index({ geometry: "2dsphere" });
+
+module.exports = mongoose.model("Territory", TerritorySchema);
+
+✅ 2. (Optional but Recommended) Route Model — models/Route.js
+
+Store the full run even if no territory is created.
+
+// models/Route.js
+
+const mongoose = require("mongoose");
+
+const RouteSchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+
+    rawPoints: [
+      {
+        lon: Number,
+        lat: Number,
+        ts: Date,
+      },
+    ],
+
+    processedPoints: [
+      {
+        lon: Number,
+        lat: Number,
+        ts: Date,
+      },
+    ],
+
+    encodedPolyline: String,
+
+    startedAt: Date,
+    endedAt: Date,
+
+    distanceMeters: Number,
+    durationSeconds: Number,
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model("Route", RouteSchema);
+
+✅ 3. Express Route for Territories — routes/territories.js
+// routes/territories.js
+
+const express = require("express");
+const Territory = require("../models/Territory");
+const router = express.Router();
+
+// POST /api/territories/claim — Save a new territory
+router.post("/claim", async (req, res) => {
+  try {
+    const {
+      owner,
+      name,
+      geometry,
+      encodedPolyline,
+      rawPoints,
+      processedPoints,
+      area,
+      perimeter,
+      deviceInfo,
+    } = req.body;
+
+    if (!owner) {
+      return res.status(400).json({ error: "owner is required" });
+    }
+
+    if (!geometry || geometry.type !== "Polygon") {
+      return res.status(400).json({ error: "Invalid or missing polygon" });
+    }
+
+    const doc = new Territory({
+      owner,
+      name,
+      geometry,
+      encodedPolyline,
+      rawPoints: rawPoints || [],
+      processedPoints: processedPoints || [],
+      area,
+      perimeter,
+      deviceInfo,
+    });
+
+    await doc.save();
+
+    return res.json({
+      success: true,
+      message: "Territory saved",
+      territory: doc,
+    });
+  } catch (err) {
+    console.error("Error saving territory:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/territories/:userId — Fetch user's territories
+router.get("/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    const list = await Territory.find({ owner: userId }).sort({
+      createdAt: -1,
+    });
+
+    return res.json({ success: true, territories: list });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
+
+✅ 4. Express Route for Saving Runs — routes/routes.js
+// routes/routes.js
+
+const express = require("express");
+const Route = require("../models/Route");
+const router = express.Router();
+
+// Save full run (raw + processed)
+router.post("/save", async (req, res) => {
+  try {
+    const {
+      user,
+      rawPoints,
+      processedPoints,
+      encodedPolyline,
+      startedAt,
+      endedAt,
+      distanceMeters,
+      durationSeconds,
+    } = req.body;
+
+    if (!user) return res.status(400).json({ error: "user required" });
+
+    const doc = new Route({
+      user,
+      rawPoints: rawPoints || [],
+      processedPoints: processedPoints || [],
+      encodedPolyline,
+      startedAt,
+      endedAt,
+      distanceMeters,
+      durationSeconds,
+    });
+
+    await doc.save();
+
+    res.json({ success: true, route: doc });
+  } catch (err) {
+    console.log("save route error", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
+
+✅ 5. server.js — Full Express Server
+// server.js
+
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
+const bodyParser = require("body-parser");
+require("dotenv").config();
+
+const territoryRoutes = require("./routes/territories");
+const routeRoutes = require("./routes/routes");
+
+const app = express();
+
+app.use(cors());
+app.use(bodyParser.json({ limit: "10mb" }));
+
+// MongoDB connection
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.error("Mongo error", err));
+
+// API routes
+app.use("/api/territories", territoryRoutes);
+app.use("/api/routes", routeRoutes);
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+📌 6. Example Client Payload (from your React Native app)
+await axios.post("https://yourserver.com/api/territories/claim", {
+  owner: userId,
+  name: "Morning Run",
+  geometry: {
+    type: "Polygon",
+    coordinates: [finalRing], // [ [lon,lat]...]
+  },
+  encodedPolyline,
+  rawPoints: rawPoints.map(p => ({
+    lon: p.lon,
+    lat: p.lat,
+    ts: new Date(p.ts)
+  })),
+  processedPoints: processedPoints.map(p => ({
+    lon: p[0],
+    lat: p[1],
+    ts: new Date()
+  })),
+  area,
+  perimeter,
+  deviceInfo: {
+    platform: Platform.OS,
+    appVersion: APP_VERSION
+  }
+});
+
+🎯 What This Backend Gives You
+✔️ Stores territories with full accuracy
+
+GeoJSON Polygon
+
+Raw GPS
+
+Processed GPS
+
+Encoded polyline
+
+Turf area & length
+
+✔️ Easy to query
+
+Spatial search ($near, $geoWithin)
+
+Fast fetch for map
+
+✔️ Clean separation
+
+Run history (Route) and Territories are separate.
+----------------------------------------------------------------------------------------------
+ Remove Previous Logic of Terrotorie and route Formation, and update the code with the Given code logic.
+ Everything should be according to the New given code. (Do only logic updation, dont chnage the theme and layouts). Doblr check the code for any errors.
+
+ Wire Every thing Properly Backend and Frontend. You can update the map.tsx Logic with turf

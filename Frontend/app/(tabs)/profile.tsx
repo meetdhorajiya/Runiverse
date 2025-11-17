@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, Image, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
+import type { Href } from 'expo-router';
 import { useTheme } from '../../context/ThemeContext';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { useStore } from '@/store/useStore';
@@ -56,8 +57,8 @@ const ProfileScreen = () => {
     [user?.distance, user?.lifetimeDistance, user?.lifetimeSteps, user?.steps, user?.territories]
   );
 
-  const profileOptions: Array<{ icon: keyof typeof FontAwesome5.glyphMap; text: string }> = [
-    { icon: 'trophy', text: 'My Achievements' },
+  const profileOptions: Array<{ icon: keyof typeof FontAwesome5.glyphMap; text: string; href?: Href }> = [
+    { icon: 'trophy', text: 'My Achievements', href: '/achievements' },
     { icon: 'route', text: 'Route History' },
     { icon: 'user-friends', text: 'Friends & Community' },
   ];
@@ -205,6 +206,14 @@ const ProfileScreen = () => {
                     <Text className="font-semibold tracking-wide" style={{ color: colors.accent.primary }}>Edit Profile</Text>
                   </Pressable>
                 </Link>
+                <Link href="/achievements" asChild>
+                  <Pressable
+                    className="mt-3 self-start border border-white/70 px-6 py-3 rounded-full active:scale-95"
+                    style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1, backgroundColor: 'transparent' }]}
+                  >
+                    <Text className="font-semibold tracking-wide" style={{ color: colors.background.primary }}>My Achievements</Text>
+                  </Pressable>
+                </Link>
               </LinearGradient>
             </View>
           </Animated.View>
@@ -264,6 +273,7 @@ const ProfileScreen = () => {
                 key={option.text}
                 icon={option.icon}
                 text={option.text}
+                href={option.href}
                 isDarkMode={isDarkMode}
                 isLast={idx === profileOptions.length - 1}
               />
@@ -301,15 +311,16 @@ interface ProfileOptionProps {
   text: string;
   isDarkMode: boolean;
   isLast?: boolean;
+  href?: string;
 }
 
-const ProfileOption = ({ icon, text, isDarkMode, isLast = false }: ProfileOptionProps) => {
+const ProfileOption = ({ icon, text, isDarkMode, isLast = false, href }: ProfileOptionProps) => {
   const { colors } = useTheme();
   const borderColor = isDarkMode ? colors.border.medium : colors.border.light;
   const iconBackground = isDarkMode ? colors.background.tertiary : colors.background.secondary;
   const iconBorder = isDarkMode ? colors.border.dark : colors.border.light;
 
-  return (
+  const content = (
     <Pressable
       className="flex-row items-center py-5 px-6"
       style={({ pressed }) => [{
@@ -344,6 +355,16 @@ const ProfileOption = ({ icon, text, isDarkMode, isLast = false }: ProfileOption
       <Ionicons name="chevron-forward" size={22} color={colors.text.secondary} />
     </Pressable>
   );
+
+  if (href) {
+    return (
+      <Link href={href} asChild>
+        {content}
+      </Link>
+    );
+  }
+
+  return content;
 };
 
 interface InfoRowProps {

@@ -5,6 +5,14 @@ const toFiniteNumber = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const toOptionalDate = (value) => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
 const isSamePoint = (a, b, tolerance = 1e-6) => {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) {
     return false;
@@ -64,44 +72,70 @@ const normalizePolygonCoordinates = (raw) => {
   return rings;
 };
 
+const normalizeGeometry = (body) => {
+  if (body?.geometry && body.geometry.type !== "Polygon") {
+    return null;
+  }
+  const source = body?.geometry?.coordinates ?? body?.coordinates;
+  const normalizedCoordinates = normalizePolygonCoordinates(source);
+  if (!normalizedCoordinates) {
+    return null;
+  }
+  return {
+    type: "Polygon",
+    coordinates: normalizedCoordinates,
+  };
+};
+
+const normalizePointSeries = (points) => {
+  if (!Array.isArray(points)) {
+    return [];
+  }
+  return points
+    .map((pt) => {
+      if (!pt) {
+        return null;
+      }
+      const lon = toFiniteNumber(pt.lon ?? pt.longitude ?? pt[0]);
+      const lat = toFiniteNumber(pt.lat ?? pt.latitude ?? pt[1]);
+      if (lon === null || lat === null) {
+        return null;
+      }
+      const ts = toOptionalDate(pt.ts ?? pt.timestamp);
+      return ts ? { lon, lat, ts } : { lon, lat };
+    })
+    .filter(Boolean);
+};
+
 export const claimTerritory = async (req, res) => {
   try {
-    const { coordinates, name, area, length } = req.body;
-
-    if (!Array.isArray(coordinates) || coordinates.length === 0) {
-      return res.status(400).json({ success: false, message: "Polygon coordinates are required" });
+    if (!req.user?._id) {
+      return res.status(401).json({ success: false, message: "Authentication is required" });
     }
 
-    const normalizedCoordinates = normalizePolygonCoordinates(coordinates);
-
-    if (!normalizedCoordinates) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid polygon coordinates provided",
-      });
+    const geometry = normalizeGeometry(req.body);
+    if (!geometry) {
+      return res.status(400).json({ success: false, message: "Valid polygon geometry is required" });
     }
 
-    const metrics = {
-      area: typeof area === "number" ? area : null,
-      length: typeof length === "number" ? length : null,
+    const processedPoints = normalizePointSeries(req.body.processedPoints);
+    const rawPoints = normalizePointSeries(req.body.rawPoints);
+
+    const territoryPayload = {
+      owner: req.user._id,
+      name: req.body.name?.trim() || "Unnamed Territory",
+      geometry,
+      encodedPolyline: typeof req.body.encodedPolyline === "string" ? req.body.encodedPolyline : undefined,
+      processedPoints,
+      rawPoints,
+      area: typeof req.body.area === "number" ? req.body.area : null,
+      perimeter: typeof req.body.perimeter === "number" ? req.body.perimeter : null,
+      claimedOn: toOptionalDate(req.body.claimedOn) ?? new Date(),
+      deviceInfo: req.body.deviceInfo || undefined,
     };
 
-    try {
-      const territory = await Territory.create({
-        owner: req.user?._id ?? null,
-        location: { type: "Polygon", coordinates: normalizedCoordinates },
-        name: name?.trim() || "Unnamed Territory",
-        claimedOn: new Date(),
-        metrics,
-      });
-      return res.json({ success: true, data: territory });
-    } catch (dbError) {
-      console.error("Territory creation failed", dbError);
-      return res.status(500).json({
-        success: false,
-        message: dbError?.message || "Failed to save territory",
-      });
-    }
+    const territory = await Territory.create(territoryPayload);
+    return res.status(201).json({ success: true, data: territory });
   } catch (err) {
     console.error("claimTerritory error", err);
     return res.status(500).json({ success: false, message: err.message });
@@ -122,7 +156,7 @@ export const getTerritories = async (req, res) => {
     // Otherwise return all territories (for map view showing all users)
     
     const territories = await Territory.find(query)
-      .populate("owner", "username avatarUrl avatar")
+      .populate("owner", "username avatar avatarUrl displayName")
       .sort({ createdAt: -1 });
 
     res.json({ success: true, data: territories });

@@ -13,17 +13,27 @@ export interface TerritoryFeature {
     name?: string;
     owner?: any;
     area?: number | null;
-    length?: number | null;
+    perimeter?: number | null;
     claimedOn?: string | Date | null;
     localId?: string;
   };
 }
 
-export interface ClaimTerritoryInput {
+export interface ClaimTerritoryPayload {
   name?: string;
-  coordinates: [number, number][];
-  area?: number;
-  length?: number;
+  geometry: {
+    type: "Polygon";
+    coordinates: number[][][];
+  };
+  area?: number | null;
+  perimeter?: number | null;
+  processedPoints: Array<{ lon: number; lat: number; ts?: number }>;
+  rawPoints: Array<{ lon: number; lat: number; ts?: number }>;
+  encodedPolyline: string;
+  deviceInfo?: {
+    platform?: string;
+    appVersion?: string;
+  };
 }
 
 type ApiListResponse = { success: boolean; data: any[] } | any[];
@@ -54,17 +64,26 @@ const stripClosingVertex = (ring: [number, number][]): [number, number][] => {
 };
 
 const territoryToFeature = (territory: any): TerritoryFeature => {
-  const polygon = Array.isArray(territory?.location?.coordinates)
-    ? territory.location.coordinates[0] ?? []
-    : [];
-  const closed = ensureClosedRing(polygon as [number, number][]);
+  const polygonSource = Array.isArray(territory?.geometry?.coordinates)
+    ? territory.geometry.coordinates
+    : Array.isArray(territory?.location?.coordinates)
+      ? territory.location.coordinates
+      : [];
+  const polygonRing = polygonSource?.[0] ?? [];
+  const closed = ensureClosedRing(polygonRing as [number, number][]);
   const workingRing = stripClosingVertex(closed);
-  const area = typeof territory?.metrics?.area === "number"
-    ? territory.metrics.area
-    : polygonAreaMeters2(workingRing as [number, number][]);
-  const length = typeof territory?.metrics?.length === "number"
-    ? territory.metrics.length
-    : pathLengthMeters(workingRing as [number, number][]);
+  const area =
+    typeof territory?.metrics?.area === "number"
+      ? territory.metrics.area
+      : typeof territory?.area === "number"
+        ? territory.area
+        : polygonAreaMeters2(workingRing as [number, number][]);
+  const perimeter =
+    typeof territory?.metrics?.perimeter === "number"
+      ? territory.metrics.perimeter
+      : typeof territory?.perimeter === "number"
+        ? territory.perimeter
+        : pathLengthMeters(workingRing as [number, number][]);
 
   return {
     type: "Feature",
@@ -77,7 +96,7 @@ const territoryToFeature = (territory: any): TerritoryFeature => {
       name: territory?.name ?? undefined,
       owner: territory?.owner ?? undefined,
       area,
-      length,
+      perimeter,
       claimedOn: territory?.claimedOn ?? null,
     },
   };
@@ -101,7 +120,7 @@ const unwrapSingleResponse = (response: ApiSingleResponse): any => {
 };
 
 export const territoryService = {
-  async fetchTerritories(scope: 'all' | 'user' = 'all'): Promise<TerritoryFeature[]> {
+  async fetchTerritories(scope: "all" | "user" = "all"): Promise<TerritoryFeature[]> {
     try {
       await authService.hydrate();
       const token = authService.getToken() || undefined;
@@ -113,15 +132,9 @@ export const territoryService = {
     }
   },
 
-  async claimTerritory(input: ClaimTerritoryInput): Promise<TerritoryFeature> {
+  async claimTerritory(payload: ClaimTerritoryPayload): Promise<TerritoryFeature> {
     await authService.hydrate();
     const token = authService.getToken() || undefined;
-    const payload = {
-      name: input.name,
-      coordinates: [ensureClosedRing(input.coordinates)],
-      area: typeof input.area === "number" ? input.area : undefined,
-      length: typeof input.length === "number" ? input.length : undefined,
-    };
     const response = await api.post<ApiSingleResponse>("/api/territories/claim", payload, token);
     return territoryToFeature(unwrapSingleResponse(response));
   },

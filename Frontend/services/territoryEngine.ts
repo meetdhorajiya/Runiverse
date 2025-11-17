@@ -1,283 +1,201 @@
-import type { Feature, LineString, Polygon, Position } from "geojson";
-import { lineString, polygon } from "@turf/helpers";
 import lineIntersect from "@turf/line-intersect";
-import booleanContains from "@turf/boolean-contains";
-import booleanOverlap from "@turf/boolean-overlap";
-import booleanIntersects from "@turf/boolean-intersects";
-import union from "@turf/union";
-import turfArea from "@turf/area";
+import nearestPointOnLine from "@turf/nearest-point-on-line";
 import simplify from "@turf/simplify";
-import { pathLengthMeters } from "@/utils/loopDetection";
-import type { TerritoryFeature } from "@/services/territoryService";
+import area from "@turf/area";
+import length from "@turf/length";
+import { lineString, point, polygon } from "@turf/helpers";
 
-export type LatLng = {
-  latitude: number;
-  longitude: number;
-  timestamp?: number;
-};
+export type Position = [number, number];
 
-export interface TerritoryEngineConfig {
-  minDistanceMeters?: number;
-  minLoopAreaMeters?: number;
-  simplifyTolerance?: number;
-  maxRoutePoints?: number;
-  minSegmentSamples?: number;
+export interface EngineConfig {
+  minDistanceMeters: number;
+  simplifyTolerance: number;
+  minSegmentSamples: number;
+  minLoopAreaMeters: number;
 }
 
-export interface TerritoryFeatureProperties {
-  id?: string;
-  name?: string;
-  owner?: any;
-  localId: string;
-  area: number;
-  length: number;
-  claimedOn?: string | Date | null;
-}
-
-export type TerritoryFeatureShape = Feature<Polygon, TerritoryFeatureProperties>;
-
-export interface HandleCoordinateResult {
+export interface HandleResult {
   routeChanged: boolean;
   route: Position[];
-  createdTerritory?: TerritoryFeatureShape;
-  mergedTerritory?: TerritoryFeatureShape;
-  mergedFromIndexes?: number[];
-  territories: TerritoryFeatureShape[];
+  territories: any[];
+  createdTerritory?: any;
+  mergedTerritory?: any;
 }
 
-const DEFAULT_CONFIG: Required<TerritoryEngineConfig> = {
-  minDistanceMeters: 10,
-  minLoopAreaMeters: 200,
-  simplifyTolerance: 0.00005,
-  maxRoutePoints: 2000,
-  minSegmentSamples: 4,
-};
-
-const createTerritoryFeature = (
-  ring: Position[],
-  properties?: Partial<TerritoryFeatureProperties>
-): TerritoryFeatureShape => {
-  const closedRing = ensureClosedRing(ring);
-  const length = pathLengthMeters(closedRing as [number, number][]);
-  const area = turfArea(polygon([closedRing]));
-
-  return {
-    type: "Feature",
-    geometry: {
-      type: "Polygon",
-      coordinates: [closedRing],
-    },
-    properties: {
-      localId: properties?.localId ?? `territory-${Date.now()}`,
-      claimedOn: properties?.claimedOn ?? new Date().toISOString(),
-      area,
-      length,
-      id: properties?.id,
-      name: properties?.name,
-      owner: properties?.owner,
-    },
-  };
+const DEFAULT_CONFIG: EngineConfig = {
+  minDistanceMeters: 6,
+  simplifyTolerance: 0.00001,
+  minSegmentSamples: 6,
+  minLoopAreaMeters: 10,
 };
 
 const ensureClosedRing = (ring: Position[]): Position[] => {
-  if (!ring.length) {
-    return ring;
-  }
+  if (!ring.length) return ring;
   const first = ring[0];
   const last = ring[ring.length - 1];
-  if (first[0] === last[0] && first[1] === last[1]) {
-    return ring;
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    return [...ring, first];
   }
-  return [...ring, [...first] as Position];
+  return ring;
 };
 
-const positionsEqual = (a: Position, b: Position, epsilon = 1e-6): boolean => {
-  return Math.abs(a[0] - b[0]) <= epsilon && Math.abs(a[1] - b[1]) <= epsilon;
-};
-
-const dedupeSequentialPositions = (points: Position[], epsilon = 1e-6): Position[] => {
-  if (points.length < 2) {
-    return points;
-  }
-  const clean: Position[] = [points[0]];
+const dedupeSequentialPositions = (points: Position[], tol = 1e-7): Position[] => {
+  if (!points.length) return [];
+  const out: Position[] = [points[0]];
   for (let i = 1; i < points.length; i += 1) {
-    const next = points[i];
-    const prev = clean[clean.length - 1];
-    if (!positionsEqual(prev, next, epsilon)) {
-      clean.push(next);
+    const prev = points[i - 1];
+    const curr = points[i];
+    if (Math.abs(prev[0] - curr[0]) > tol || Math.abs(prev[1] - curr[1]) > tol) {
+      out.push(curr);
     }
   }
-  return clean;
+  return out;
 };
 
-const selectIntersectionPoint = (line: Feature<LineString>, segment: Feature<LineString>): Position | null => {
-  const result = lineIntersect(line, segment);
-  if (!result.features.length) {
-    return null;
-  }
-  const first = result.features.find((feature) => feature.geometry?.type === "Point");
-  if (first && "coordinates" in first.geometry && Array.isArray(first.geometry.coordinates)) {
-    return first.geometry.coordinates as Position;
-  }
-  return null;
+const makeTerritory = (ring: Position[]) => ({
+  type: "Feature",
+  properties: {},
+  geometry: {
+    type: "Polygon",
+    coordinates: [ring],
+  },
+});
+
+const metersBetween = (a: Position, b: Position): number => {
+  const [lon1, lat1] = a;
+  const [lon2, lat2] = b;
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const x =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 };
 
-export class TerritoryEngine {
+export default class TerrotorieEngine {
+  private config: EngineConfig;
+
   private route: Position[] = [];
 
-  private territories: TerritoryFeatureShape[] = [];
+  private territories: any[] = [];
 
-  private lastAppended?: Position;
-
-  private readonly config: Required<TerritoryEngineConfig>;
-
-  constructor(config?: TerritoryEngineConfig) {
+  constructor(config?: Partial<EngineConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...(config ?? {}) };
   }
 
-  public hydrateTerritories(features: TerritoryFeatureShape[]) {
-    this.territories = [...features];
-  }
-
-  public resetRoute() {
+  reset() {
     this.route = [];
-    this.lastAppended = undefined;
+    this.territories = [];
   }
 
-  public seedRoute(path: [number, number][]) {
-    this.route = [...path];
-    this.lastAppended = this.route.length ? this.route[this.route.length - 1] : undefined;
+  seedRoute(points: Position[]) {
+    this.route = points.slice();
   }
 
-  public getRoute(): Position[] {
+  getRoute() {
     return [...this.route];
   }
 
-  public getTerritories(): TerritoryFeatureShape[] {
-    return [...this.territories];
+  handleNewCoordinate(coord: { latitude: number; longitude: number; timestamp?: number }): HandleResult {
+    const next: Position = [coord.longitude, coord.latitude];
+    const last = this.route[this.route.length - 1];
+
+    if (last && last[0] === next[0] && last[1] === next[1]) {
+      return { routeChanged: false, route: [...this.route], territories: [...this.territories] };
+    }
+
+    this.route.push(next);
+
+    if (this.route.length < this.config.minSegmentSamples) {
+      return { routeChanged: true, route: [...this.route], territories: [...this.territories] };
+    }
+
+    const closure = this.detectClosure();
+    if (closure) {
+      const loop = this.buildLoop(closure.coord, closure.startIndex);
+      if (loop) {
+        const terr = makeTerritory(loop);
+        const evalResult = this.evaluateTerritory(terr);
+        if (evalResult?.action === "add") {
+          this.territories.push(evalResult.feature);
+          return {
+            routeChanged: true,
+            route: [...this.route],
+            territories: [...this.territories],
+            createdTerritory: evalResult.feature,
+          };
+        }
+      }
+    }
+
+    return { routeChanged: true, route: [...this.route], territories: [...this.territories] };
   }
 
-  public handleNewCoordinate(coord: LatLng): HandleCoordinateResult | null {
-    const newPosition: Position = [coord.longitude, coord.latitude];
-
-    if (this.lastAppended && distanceMeters(this.lastAppended, newPosition) < this.config.minDistanceMeters) {
-      return null;
+  finalizeAfterRun(): HandleResult {
+    const n = this.route.length - 1;
+    if (n < this.config.minSegmentSamples) {
+      return { routeChanged: false, route: [...this.route], territories: [...this.territories] };
     }
 
-    if (this.route.length && positionsEqual(this.route[this.route.length - 1], newPosition)) {
-      return null;
-    }
-
-    this.route = [...this.route, newPosition];
-    this.lastAppended = newPosition;
-
-    if (this.route.length > this.config.maxRoutePoints) {
-      this.route = this.route.slice(this.route.length - this.config.maxRoutePoints);
-    }
-
-    const lastIndex = this.route.length - 1;
-    if (lastIndex < this.config.minSegmentSamples) {
-      return {
-        routeChanged: true,
-        route: [...this.route],
-        territories: [...this.territories],
-      };
-    }
-
-    const lastSegment = lineString([this.route[lastIndex - 1], this.route[lastIndex]]);
-
-    let intersection: Position | null = null;
-    let loopStartIndex: number | null = null;
-
-    for (let i = 0; i < lastIndex - 1 && !intersection; i += 1) {
-      const segment = lineString([this.route[i], this.route[i + 1]]);
-      const candidate = selectIntersectionPoint(segment, lastSegment);
-      if (candidate) {
-        intersection = candidate;
-        loopStartIndex = i + 1;
-      }
-    }
-
-    if (!intersection) {
-      const proximityIndex = this.findNearbyClosure(lastIndex);
-      if (proximityIndex !== null) {
-        intersection = this.route[proximityIndex];
-        loopStartIndex = proximityIndex + 1;
-      }
-    }
-
-    if (intersection !== null && loopStartIndex !== null) {
-      const ring = this.buildLoop(intersection, loopStartIndex);
-      if (ring) {
-        const normalized = simplify(polygon([ring]), {
-          tolerance: this.config.simplifyTolerance,
-          highQuality: false,
-          mutate: true,
-        });
-
-        const simplifiedRing = normalized.geometry.type === "Polygon"
-          ? normalized.geometry.coordinates[0] ?? []
-          : ring;
-
-        const dedupedRing = dedupeSequentialPositions(ensureClosedRing(simplifiedRing));
-        if (dedupedRing.length >= 4) {
-          const feature = createTerritoryFeature(dedupedRing);
-          if (feature.properties.area >= this.config.minLoopAreaMeters) {
-            const evaluation = this.evaluateAgainstExisting(feature);
-            if (evaluation) {
-              const update: HandleCoordinateResult = {
+    for (let j = 0; j < n - 2; j += 1) {
+      for (let i = j + 2; i < n; i += 1) {
+        const inter = this.lineIntersection(this.route[j], this.route[j + 1], this.route[i], this.route[i + 1]);
+        if (inter) {
+          const loop = this.buildLoop(inter, j + 1);
+          if (loop) {
+            const terr = makeTerritory(loop);
+            const evalResult = this.evaluateTerritory(terr);
+            if (evalResult?.action === "add") {
+              this.territories.push(evalResult.feature);
+              return {
                 routeChanged: true,
                 route: [...this.route],
                 territories: [...this.territories],
+                createdTerritory: evalResult.feature,
               };
-
-              if (evaluation.action === "ignore") {
-                return update;
-              }
-
-              if (evaluation.action === "merge") {
-                this.territories = this.territories.map((existing, index) =>
-                  index === evaluation.mergeIndex ? evaluation.feature : existing
-                );
-                update.mergedTerritory = evaluation.feature;
-                update.mergedFromIndexes = [evaluation.mergeIndex];
-                this.route = this.route.slice(loopStartIndex);
-                this.lastAppended = this.route.length ? this.route[this.route.length - 1] : undefined;
-                update.territories = [...this.territories];
-                update.route = [...this.route];
-                return update;
-              }
-
-              this.territories = [...this.territories, evaluation.feature];
-              update.createdTerritory = evaluation.feature;
-              update.territories = [...this.territories];
-              this.route = this.route.slice(loopStartIndex);
-              this.lastAppended = this.route.length ? this.route[this.route.length - 1] : undefined;
-              update.route = [...this.route];
-              return update;
             }
           }
         }
       }
     }
 
-    return {
-      routeChanged: true,
-      route: [...this.route],
-      territories: [...this.territories],
-    };
+    return { routeChanged: false, route: [...this.route], territories: [...this.territories] };
   }
 
-  private findNearbyClosure(lastIndex: number): number | null {
+  private detectClosure() {
+    const lastIdx = this.route.length - 1;
+    const lastPoint = this.route[lastIdx];
     const tailGuard = Math.max(this.config.minSegmentSamples, 4);
-    const threshold = Math.max(this.config.minDistanceMeters * 1.5, 12);
-    const lastPoint = this.route[lastIndex];
-    for (let i = 0; i <= lastIndex - tailGuard; i += 1) {
-      const candidate = this.route[i];
-      if (distanceMeters(candidate, lastPoint) <= threshold) {
-        return i;
+
+    // exact intersections as we append new segment
+    const a = this.route[lastIdx - 1];
+    const b = this.route[lastIdx];
+    for (let i = 0; i < lastIdx - 2; i += 1) {
+      const inter = this.lineIntersection(a, b, this.route[i], this.route[i + 1]);
+      if (inter) {
+        return { coord: inter, startIndex: i + 1 };
       }
     }
+
+    // proximity snap (vertex or projection)
+    const threshold = Math.max(this.config.minDistanceMeters * 1.4, 10);
+    for (let i = 0; i < lastIdx - tailGuard; i += 1) {
+      const candidate = this.route[i];
+      const dist = metersBetween(candidate, lastPoint);
+      if (dist <= threshold) {
+        return { coord: candidate, startIndex: i + 1 };
+      }
+      const seg = lineString([this.route[i], this.route[i + 1]]);
+      const proj = nearestPointOnLine(seg, point(lastPoint));
+      if (proj.properties && typeof proj.properties.dist === "number" && proj.properties.dist <= threshold) {
+        return { coord: proj.geometry.coordinates as Position, startIndex: i + 1 };
+      }
+    }
+
     return null;
   }
 
@@ -287,112 +205,44 @@ export class TerritoryEngine {
       loop.push(this.route[i]);
     }
     loop.push(intersection);
-    const clean = dedupeSequentialPositions(loop);
-    return clean.length >= 4 ? clean : null;
+    let ring = ensureClosedRing(loop);
+    ring = dedupeSequentialPositions(ring);
+    if (ring.length < 4) return null;
+
+    const simplified = simplify(polygon([ring]), {
+      tolerance: this.config.simplifyTolerance,
+      highQuality: false,
+    });
+    const coords = simplified.geometry.type === "Polygon" ? simplified.geometry.coordinates[0] ?? ring : ring;
+    return ensureClosedRing(coords as Position[]);
   }
 
-  private evaluateAgainstExisting(feature: TerritoryFeatureShape):
-    | { action: "ignore"; feature: TerritoryFeatureShape }
-    | { action: "add"; feature: TerritoryFeatureShape }
-    | { action: "merge"; feature: TerritoryFeatureShape; mergeIndex: number }
-    | null {
-    const newArea = feature.properties.area;
-
-    for (let i = 0; i < this.territories.length; i += 1) {
-      const existing = this.territories[i];
-      const existingArea = existing.properties.area;
-      const areaDiffRatio = Math.abs(existingArea - newArea) / Math.max(existingArea, newArea);
-
-      if (areaDiffRatio < 0.05) {
-        const containsExisting = booleanContains(existing, feature);
-        const containsNew = booleanContains(feature, existing);
-        if (containsExisting || containsNew) {
-          return { action: "ignore", feature };
-        }
-      }
-
-      if (
-        booleanIntersects(existing as any, feature as any) ||
-        booleanOverlap(existing as any, feature as any) ||
-        booleanContains(existing as any, feature as any) ||
-        booleanContains(feature as any, existing as any)
-      ) {
-        const merged = union(existing as any, feature as any) as Feature<Polygon> | null;
-        if (merged && merged.geometry && merged.geometry.type === "Polygon") {
-          const mergedRing = merged.geometry.coordinates[0] ?? [];
-          const mergedFeature = createTerritoryFeature(mergedRing, {
-            id: existing.properties.id,
-            localId: existing.properties.localId,
-          });
-          return { action: "merge", feature: mergedFeature, mergeIndex: i };
-        }
-      }
+  private evaluateTerritory(feature: any) {
+    const polygonArea = area(feature);
+    if (polygonArea < this.config.minLoopAreaMeters) {
+      return { action: "ignore" as const };
     }
 
-    return { action: "add", feature };
+    const perimeterMeters = length(feature, { units: "meters" });
+    return {
+      action: "add" as const,
+      feature: {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          area: polygonArea,
+          perimeter: perimeterMeters,
+        },
+      },
+    };
+  }
+
+  private lineIntersection(a: Position, b: Position, c: Position, d: Position): Position | null {
+    const res = lineIntersect(lineString([a, b]), lineString([c, d]));
+    if (!res.features.length) {
+      return null;
+    }
+    const coords = res.features[0].geometry.coordinates as Position;
+    return [coords[0], coords[1]];
   }
 }
-
-const distanceMeters = (coord1: Position, coord2: Position): number => {
-  const [lon1, lat1] = coord1;
-  const [lon2, lat2] = coord2;
-  const R = 6371e3; // meters
-  const φ1 = (lat1 * Math.PI) / 180;
-  const φ2 = (lat2 * Math.PI) / 180;
-  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) *
-      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c;
-};
-
-export const toEngineTerritory = (territory: TerritoryFeature): TerritoryFeatureShape => {
-  const ring = Array.isArray(territory.geometry?.coordinates?.[0])
-    ? (territory.geometry.coordinates[0] as Position[])
-    : [];
-  const area = typeof territory.properties?.area === "number"
-    ? territory.properties.area
-    : turfArea(polygon([ring]));
-  const length = typeof territory.properties?.length === "number"
-    ? territory.properties.length
-    : pathLengthMeters(ring as [number, number][]);
-
-  return {
-    type: "Feature",
-    geometry: {
-      type: "Polygon",
-      coordinates: [ensureClosedRing(ring)],
-    },
-    properties: {
-      id: territory.properties?.id,
-      name: territory.properties?.name,
-      owner: territory.properties?.owner,
-      localId: territory.properties?.localId ?? `territory-${Date.now()}`,
-      area,
-      length,
-      claimedOn: territory.properties?.claimedOn ?? null,
-    },
-  };
-};
-
-export const fromEngineTerritory = (territory: TerritoryFeatureShape): TerritoryFeature => ({
-  type: "Feature",
-  geometry: {
-    type: "Polygon",
-    coordinates: territory.geometry.coordinates as [Array<[number, number]>],
-  },
-  properties: {
-    id: territory.properties.id,
-    name: territory.properties.name,
-    owner: territory.properties.owner,
-    area: territory.properties.area,
-    length: territory.properties.length,
-    claimedOn: territory.properties.claimedOn ?? null,
-    localId: territory.properties.localId,
-  },
-});

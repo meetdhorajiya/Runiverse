@@ -12,7 +12,7 @@ import { useProgressAnimation } from "@/hooks/useProgressAnimation";
 import { User } from "@/store/types";
 import { authService } from "@/services/AuthService";
 
-interface Task {
+export interface Task {
   _id: string;
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
@@ -45,9 +45,9 @@ interface MetricConfig {
   canTrack: (user: User | null) => boolean;
 }
 
-const trimTrailingZeros = (value: string) => value.replace(/\.0+$/, "").replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.$/, "");
+export const trimTrailingZeros = (value: string) => value.replace(/\.0+$/, "").replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.$/, "");
 
-const distanceFormatter = (value: number) => {
+export const distanceFormatter = (value: number) => {
   if (!Number.isFinite(value)) return "0";
   const absolute = Math.max(0, value);
   if (absolute >= 10) return trimTrailingZeros(absolute.toFixed(1));
@@ -55,12 +55,12 @@ const distanceFormatter = (value: number) => {
   return trimTrailingZeros(absolute.toFixed(3));
 };
 
-const integerFormatter = (value: number) => {
+export const integerFormatter = (value: number) => {
   if (!Number.isFinite(value)) return "0";
   return Math.max(0, Math.round(value)).toString();
 };
 
-const METRIC_CONFIG: Record<Task["type"], MetricConfig> = {
+export const METRIC_CONFIG: Record<Task["type"], MetricConfig> = {
   run: {
     unitLabel: "km",
     selector: (user) => (typeof user?.distance === "number" ? user.distance : 0),
@@ -122,7 +122,7 @@ interface ChallengeCardProps {
   progressReady: boolean;
 }
 
-const difficultyColors: Record<string, string> = {
+export const difficultyColors: Record<string, string> = {
   easy: "#00C853",
   medium: "#FFA500",
   hard: "#DC143C",
@@ -322,7 +322,7 @@ const ChallengeCard = ({
   );
 };
 
-const TASK_TYPE_ICON: Record<Task["type"], string> = {
+export const TASK_TYPE_ICON: Record<Task["type"], string> = {
   run: "running",
   walk: "walking",
   capture: "flag",
@@ -338,6 +338,7 @@ const ChallengesScreen = () => {
   const [progressHydrated, setProgressHydrated] = useState(false);
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const completionInFlight = useRef<Set<string>>(new Set());
+  const autoJoinQueue = useRef<Map<string, Task>>(new Map());
 
   const bgClass = isDarkMode ? "bg-background-dark" : "bg-gray-100";
   const textClass = isDarkMode ? "text-text-primary" : "text-gray-900";
@@ -356,6 +357,117 @@ const ChallengesScreen = () => {
       return next;
     });
   }, []);
+
+  const joinChallenge = useCallback(
+    (task: Task, options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      const notify = (payload: Parameters<typeof Toast.show>[0]) => {
+        if (!silent) {
+          Toast.show(payload);
+        }
+      };
+
+      if (!progressHydrated) {
+        notify({
+          type: "info",
+          text1: "Almost ready",
+          text2: "Loading your challenge progress...",
+          position: "bottom",
+        });
+        return false;
+      }
+
+      if (task.completed) {
+        notify({
+          type: "info",
+          text1: "Already completed",
+          text2: "You have already finished this challenge!",
+          position: "bottom",
+        });
+        return false;
+      }
+
+      if (!token) {
+        notify({
+          type: "info",
+          text1: "Sign in required",
+          text2: "Log in to join challenges.",
+          position: "bottom",
+        });
+        return false;
+      }
+
+      const config = METRIC_CONFIG[task.type];
+      if (!config) {
+        notify({
+          type: "info",
+          text1: "Unsupported challenge",
+          text2: "This challenge type isn't trackable yet.",
+          position: "bottom",
+        });
+        return false;
+      }
+
+      if (!config.canTrack(user ?? null)) {
+        notify({
+          type: "info",
+          text1: "Tracking unavailable",
+          text2: "Connect your activity tracker to join.",
+          position: "bottom",
+        });
+        return false;
+      }
+
+      const baselineRaw = config.selector(user ?? null);
+      let joined = false;
+      let alreadyJoined = false;
+
+      setProgressMap((prev) => {
+        const existing = prev[task._id];
+        if (existing?.joined) {
+          alreadyJoined = true;
+          return prev;
+        }
+
+        joined = true;
+
+        return {
+          ...prev,
+          [task._id]: {
+            joined: true,
+            baselineRaw,
+            metric: task.type,
+            progressValue: 0,
+            percent: 0,
+            completed: false,
+            completionSynced: false,
+          },
+        };
+      });
+
+      if (joined && !silent) {
+        Toast.show({
+          type: "success",
+          text1: "Challenge joined 🎯",
+          text2: "Track your activity to complete it.",
+          position: "bottom",
+        });
+      }
+
+      return joined || alreadyJoined;
+    },
+    [progressHydrated, token, user]
+  );
+
+  const enqueueAutoJoin = useCallback(
+    (task: Task) => {
+      const joined = joinChallenge(task, { silent: true });
+      if (!joined) {
+        autoJoinQueue.current.set(task._id, task);
+      }
+    },
+    [joinChallenge]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -474,6 +586,7 @@ const ChallengesScreen = () => {
       }
       if (data.task) {
         setTasks((prev) => [data.task, ...prev]);
+        enqueueAutoJoin(data.task);
       }
     } catch (err) {
       console.error("Generate AI task error:", err);
@@ -486,7 +599,19 @@ const ChallengesScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, enqueueAutoJoin]);
+
+  useEffect(() => {
+    if (!progressHydrated) return;
+    if (autoJoinQueue.current.size === 0) return;
+
+    for (const [taskId, task] of autoJoinQueue.current.entries()) {
+      const joined = joinChallenge(task, { silent: true });
+      if (joined) {
+        autoJoinQueue.current.delete(taskId);
+      }
+    }
+  }, [progressHydrated, user, joinChallenge]);
 
   useEffect(() => {
     if (!progressHydrated) return;
@@ -677,86 +802,12 @@ const ChallengesScreen = () => {
     });
   }, [progressMap, tasks, token, progressHydrated, ensureSyncingState]);
 
-  const handleJoin = useCallback((task: Task) => {
-    if (!progressHydrated) {
-      Toast.show({
-        type: "info",
-        text1: "Almost ready",
-        text2: "Loading your challenge progress...",
-        position: "bottom",
-      });
-      return;
-    }
-
-    if (task.completed) {
-      Toast.show({
-        type: "info",
-        text1: "Already completed",
-        text2: "You have already finished this challenge!",
-        position: "bottom",
-      });
-      return;
-    }
-
-    if (!token) {
-      Toast.show({
-        type: "info",
-        text1: "Sign in required",
-        text2: "Log in to join challenges.",
-        position: "bottom",
-      });
-      return;
-    }
-
-    const config = METRIC_CONFIG[task.type];
-    if (!config) {
-      Toast.show({
-        type: "info",
-        text1: "Unsupported challenge",
-        text2: "This challenge type isn't trackable yet.",
-        position: "bottom",
-      });
-      return;
-    }
-
-    if (!config.canTrack(user ?? null)) {
-      Toast.show({
-        type: "info",
-        text1: "Tracking unavailable",
-        text2: "Connect your activity tracker to join.",
-        position: "bottom",
-      });
-      return;
-    }
-
-    const baselineRaw = config.selector(user ?? null);
-
-    setProgressMap((prev) => {
-      const existing = prev[task._id];
-      if (existing?.joined) {
-        return prev;
-      }
-      return {
-        ...prev,
-        [task._id]: {
-          joined: true,
-          baselineRaw,
-          metric: task.type,
-          progressValue: 0,
-          percent: 0,
-          completed: false,
-          completionSynced: false,
-        },
-      };
-    });
-
-    Toast.show({
-      type: "success",
-      text1: "Challenge joined 🎯",
-      text2: "Track your activity to complete it.",
-      position: "bottom",
-    });
-  }, [progressHydrated, token, user]);
+  const handleJoin = useCallback(
+    (task: Task) => {
+      joinChallenge(task);
+    },
+    [joinChallenge]
+  );
 
   return (
     <SafeAreaView className={`flex-1 ${bgClass}`}>

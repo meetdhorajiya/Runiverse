@@ -8,6 +8,7 @@ import challengeRoutes from "./routes/challengeRoutes.js";
 import leaderboardRoutes from "./routes/leaderboardRoutes.js";
 import territoryRoutes from "./routes/territoryRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
+import routeRoutes from "./routes/routeRoutes.js";
 import { notFound, errorHandler } from "./middlewares/errorMiddleware.js";
 import avatarRoutes from "./routes/avatarRoutes.js";
 
@@ -28,6 +29,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/challenges", challengeRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/territories", territoryRoutes);
+app.use("/api/routes", routeRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/avatar", avatarRoutes);
 console.log("📦 Task routes mounted at /api/tasks");

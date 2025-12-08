@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist
+build
+coverage
+.expo
+.next
+out
+
+# Version control
+.git
+.svn
+
+# IDE
+.vscode
+.idea
+
+# System
+.DS_Store
+Thumbs.db
+
+# Assets
+assets/
+public/

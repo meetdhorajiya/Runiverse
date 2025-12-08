@@ -11,6 +11,7 @@ interface GlassCardProps {
   onPress?: () => void;
   className?: string;
   delay?: number; // Animation delay
+  headerRight?: React.ReactNode; // Optional action slot
 }
 
 export const GlassCard = ({
@@ -21,6 +22,7 @@ export const GlassCard = ({
   onPress,
   className = '',
   delay = 0,
+  headerRight,
 }: GlassCardProps) => {
   // Variant Styles
   const bgColors = {
@@ -38,9 +40,14 @@ export const GlassCard = ({
   const Content = (
     <BlurView intensity={20} tint="dark" className="flex-1 p-4">
       {(title || subtitle) && (
-        <View className="mb-3 flex-row justify-between items-center">
-          {title && <Text className="text-slate-200 font-bold text-base">{title}</Text>}
-          {subtitle && <Text className="text-emerald-400 font-bold text-lg">{subtitle}</Text>}
+        <View className="mb-3 flex-row items-center">
+          <View className="flex-1 pr-3">
+            {title && <Text className="text-slate-200 font-bold text-base">{title}</Text>}
+            {subtitle && (
+              <Text className="text-emerald-400 font-bold text-lg mt-0.5">{subtitle}</Text>
+            )}
+          </View>
+          {headerRight ? <View className="ml-auto flex-row items-center">{headerRight}</View> : null}
         </View>
       )}
       <View>{children}</View>

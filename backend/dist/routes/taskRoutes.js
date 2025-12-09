@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.js";
-import { createTask, getTasks, getTaskById, markTaskCompleted, deleteTask, generateAITask, } from "../controllers/taskController.js";
+import { createTask, getTasks, getTaskById, markTaskCompleted, deleteTask, generateAITask, } from "../controllers/challengeController.js";
 const router = Router();
 router.post("/", authMiddleware, createTask);
 router.get("/", authMiddleware, getTasks);

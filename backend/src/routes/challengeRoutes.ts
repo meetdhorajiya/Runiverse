@@ -1,10 +1,27 @@
 import { Router } from "express";
 import { authMiddleware } from "../middlewares/auth.js";
-import { getChallenges, updateChallengeProgress } from "../controllers/challengeController.js";
+import {
+	createTask,
+	getTasks,
+	getTaskById,
+	markTaskCompleted,
+	deleteTask,
+	generateAITask,
+	getChallenges,
+	updateChallengeProgress,
+} from "../controllers/challengeController.js";
 
 const router = Router();
 
-router.get("/", authMiddleware, getChallenges);
-router.put("/progress", authMiddleware, updateChallengeProgress);
+router.post("/", authMiddleware, createTask);
+router.get("/", authMiddleware, getTasks);
+router.post("/generate-ai", authMiddleware, generateAITask);
+
+router.get("/public", authMiddleware, getChallenges);
+router.put("/public/progress", authMiddleware, updateChallengeProgress);
+
+router.get("/:id", authMiddleware, getTaskById);
+router.put("/:id/complete", authMiddleware, markTaskCompleted);
+router.delete("/:id", authMiddleware, deleteTask);
 
 export default router;

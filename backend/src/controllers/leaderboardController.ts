@@ -128,8 +128,7 @@ export const getCityLeaderboard = async (req: AuthenticatedRequest, res: Respons
     }
 
     if (normalizedUsers.length === 0) {
-      const fallback = await fetchGlobalLeaderboard(10);
-      return res.json({ success: true, data: fallback });
+      return res.json({ success: true, data: [], message: "No results found for the selected city." });
     }
 
     const ownerIds = normalizedUsers.map((u) => (typeof u._id === "string" ? new mongoose.Types.ObjectId(u._id) : u._id));

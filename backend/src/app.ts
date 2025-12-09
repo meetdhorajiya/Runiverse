@@ -7,7 +7,6 @@ import userRoutes from "./routes/userRoutes.js";
 import challengeRoutes from "./routes/challengeRoutes.js";
 import leaderboardRoutes from "./routes/leaderboardRoutes.js";
 import territoryRoutes from "./routes/territoryRoutes.js";
-import taskRoutes from "./routes/taskRoutes.js";
 import avatarRoutes from "./routes/avatarRoutes.js";
 import { notFound, errorHandler } from "./middlewares/errorMiddleware.js";
 
@@ -23,7 +22,6 @@ app.use("/api/users", userRoutes);
 app.use("/api/challenges", challengeRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/territories", territoryRoutes);
-app.use("/api/tasks", taskRoutes);
 app.use("/api/avatar", avatarRoutes);
 
 app.get("/", (_req: Request, res: Response) => res.json({ message: "Runiverse Backend running 🚀" }));

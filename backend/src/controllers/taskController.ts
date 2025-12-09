@@ -1,6 +1,10 @@
 import type { Request, Response } from "express";
 import axios from "axios";
-import Task, { TaskDocument } from "../models/Task.js";
+import Challenge, {
+  type ChallengeDocument,
+  type ChallengeDifficulty,
+  type ChallengeType,
+} from "../models/Challenge.js";
 import type { UserDocument } from "../models/User.js";
 
 interface AuthenticatedRequest extends Request {
@@ -9,8 +13,8 @@ interface AuthenticatedRequest extends Request {
 
 interface CreateTaskBody {
   description: string;
-  difficulty: "easy" | "medium" | "hard";
-  type: "run" | "walk" | "capture" | "streak";
+  difficulty: ChallengeDifficulty;
+  type: ChallengeType;
   target: number;
   expiresAt?: string;
   generatedByAI?: boolean;
@@ -24,8 +28,8 @@ interface GenerateAITaskBody {
 
 interface AITaskPayload {
   description: string;
-  difficulty: "easy" | "medium" | "hard";
-  type: "run" | "walk" | "capture" | "streak";
+  difficulty: ChallengeDifficulty;
+  type: ChallengeType;
   target: number;
 }
 
@@ -34,17 +38,24 @@ export const createTask = async (
   res: Response
 ): Promise<Response> => {
   try {
-    if (!req.user?.id) {
+    if (!req.user?._id) {
       return res.status(401).json({ msg: "Unauthorized" });
     }
 
     const body = req.body as CreateTaskBody;
-    const task = await Task.create({
-      ...body,
-      userId: req.user.id,
+
+    const challenge = await Challenge.create({
+      owner: req.user._id,
+      title: body.description,
+      description: body.description,
+      target: body.target,
+      type: body.type,
+      difficulty: body.difficulty,
+      generatedByAI: body.generatedByAI ?? false,
+      expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
     });
 
-    return res.status(201).json(task);
+    return res.status(201).json(challenge);
   } catch (err) {
     console.error("Create task error:", err);
     return res.status(500).json({ msg: "Server error" });
@@ -53,12 +64,11 @@ export const createTask = async (
 
 export const getTasks = async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
   try {
-    if (!req.user?.id) {
+    if (!req.user?._id) {
       return res.status(401).json({ msg: "Unauthorized" });
     }
 
-    console.log("✅ getTasks hit");
-    const tasks = await Task.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    const tasks = await Challenge.find({ owner: req.user._id }).sort({ createdAt: -1 });
     return res.json(tasks);
   } catch (err) {
     console.error("Get tasks error:", err);
@@ -68,13 +78,13 @@ export const getTasks = async (req: AuthenticatedRequest, res: Response): Promis
 
 export const getTaskById = async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
   try {
-    if (!req.user?.id) {
+    if (!req.user?._id) {
       return res.status(401).json({ msg: "Unauthorized" });
     }
 
-    const task = await Task.findOne({
+    const task = await Challenge.findOne({
       _id: req.params.id,
-      userId: req.user.id,
+      owner: req.user._id,
     });
 
     if (!task) {
@@ -90,20 +100,30 @@ export const getTaskById = async (req: AuthenticatedRequest, res: Response): Pro
 
 export const markTaskCompleted = async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
   try {
-    if (!req.user?.id) {
+    if (!req.user?._id) {
       return res.status(401).json({ msg: "Unauthorized" });
     }
 
-    const task = await Task.findOne({
+    const task = await Challenge.findOne({
       _id: req.params.id,
-      userId: req.user.id,
+      owner: req.user._id,
     });
 
     if (!task) {
       return res.status(404).json({ msg: "Task not found" });
     }
 
-    await task.markCompleted();
+    task.completed = true;
+
+    task.progress.forEach((entry) => {
+      if (entry.user.toString() === req.user?._id.toString()) {
+        entry.completed = true;
+        entry.currentProgress = task.goal;
+      }
+    });
+
+    await task.save();
+
     return res.json({ msg: "Task marked as completed", task });
   } catch (err) {
     console.error("Mark completed error:", err);
@@ -113,13 +133,13 @@ export const markTaskCompleted = async (req: AuthenticatedRequest, res: Response
 
 export const deleteTask = async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
   try {
-    if (!req.user?.id) {
+    if (!req.user?._id) {
       return res.status(401).json({ msg: "Unauthorized" });
     }
 
-    const task = await Task.findOneAndDelete({
+    const task = await Challenge.findOneAndDelete({
       _id: req.params.id,
-      userId: req.user.id,
+      owner: req.user._id,
     });
 
     if (!task) {
@@ -138,14 +158,14 @@ export const generateAITask = async (
   res: Response
 ): Promise<Response> => {
   try {
-    if (!req.user?.id) {
+    if (!req.user?._id) {
       return res.status(401).json({ msg: "Unauthorized" });
     }
 
     const { recentDistance = 0, streakDays = 0, avgSpeed = 0 } = req.body as GenerateAITaskBody;
 
-    const recentTasks = await Task.find({
-      userId: req.user.id,
+    const recentTasks = await Challenge.find({
+      owner: req.user._id,
       generatedByAI: true,
       createdAt: { $gte: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) },
     }).sort({ createdAt: -1 });
@@ -216,16 +236,17 @@ Guidelines:
       attempts += 1;
     } while (
       attempts < 2 &&
-      (!aiTask || recentTasks.some((t: TaskDocument) => t.description === aiTask?.description))
+      (!aiTask || recentTasks.some((t: ChallengeDocument) => t.description === aiTask?.description))
     );
 
     if (!aiTask) {
       return res.status(500).json({ msg: "AI generation failed" });
     }
 
-    const newTask = await Task.create({
-      userId: req.user.id,
+    const newTask = await Challenge.create({
+      owner: req.user._id,
       description: aiTask.description,
+      title: aiTask.description,
       difficulty: aiTask.difficulty,
       type: aiTask.type,
       target: aiTask.target,

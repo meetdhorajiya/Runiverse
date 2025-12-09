@@ -7,7 +7,7 @@ import {
   markTaskCompleted,
   deleteTask,
   generateAITask,
-} from "../controllers/taskController.js";
+} from "../controllers/challengeController.js";
 
 const router = Router();
 

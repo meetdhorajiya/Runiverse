@@ -11,7 +11,7 @@
     "skipLibCheck": true,
     "strict": false,
     "resolveJsonModule": true,
-    "types": ["node", "jest"],
+    "types": ["node"],
     "noEmitOnError": true
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"],

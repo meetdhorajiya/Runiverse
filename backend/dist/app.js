@@ -15,10 +15,6 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(morgan("dev"));
 app.use(cors({ origin: ["https://runiverse.onrender.com/"], credentials: true }));
-app.use((req, res, next) => {
-    console.log("➡️ Incoming:", req.method, req.originalUrl);
-    next();
-});
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/challenges", challengeRoutes);
@@ -26,7 +22,6 @@ app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/territories", territoryRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/avatar", avatarRoutes);
-console.log("📦 Task routes mounted at /api/tasks");
 app.get("/", (_req, res) => res.json({ message: "Runiverse Backend running 🚀" }));
 app.use(notFound);
 app.use(errorHandler);

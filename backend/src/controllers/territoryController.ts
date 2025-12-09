@@ -1,129 +1,240 @@
 import type { Request, Response } from "express";
-import Territory from "../models/Territory.js";
+import {
+  computeAreaPerimeterFromRings,
+  computeLineLengthMeters,
+  sanitizeLineString,
+  sanitizePolygonRings,
+  dedupeConsecutive,
+  closeRing,
+} from "../utils/geometry.js";
+import Territory, { type IDeviceInfo, type PolygonRings } from "../models/Territory.js";
 import type { UserDocument } from "../models/User.js";
 
 interface AuthenticatedRequest extends Request {
   user?: UserDocument;
 }
 
-type Coordinate = [number, number];
-type PolygonRing = Coordinate[];
-
-type NormalizedCoordinates = PolygonRing[];
-
 const toFiniteNumber = (value: unknown): number | null => {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 };
 
-const isSamePoint = (a: Coordinate | undefined, b: Coordinate | undefined, tolerance = 1e-6): boolean => {
-  if (!a || !b) {
-    return false;
+const toDate = (value: unknown): Date | null => {
+  if (!value) {
+    return null;
   }
-  return Math.abs(a[0] - b[0]) <= tolerance && Math.abs(a[1] - b[1]) <= tolerance;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === "number") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
 };
 
-const sanitizeRing = (ring: unknown): PolygonRing | null => {
-  if (!Array.isArray(ring)) {
-    return null;
+const sanitizeDeviceInfo = (raw: unknown): IDeviceInfo | undefined => {
+  if (!raw || typeof raw !== "object") {
+    return undefined;
   }
 
-  const cleaned: PolygonRing = [];
-  for (let i = 0; i < ring.length; i += 1) {
-    const point = ring[i];
-    if (!Array.isArray(point) || point.length < 2) {
-      continue;
-    }
-    const lon = toFiniteNumber(point[0]);
-    const lat = toFiniteNumber(point[1]);
-    if (lon === null || lat === null) {
-      continue;
-    }
-    cleaned.push([lon, lat]);
+  const source = raw as Record<string, unknown>;
+  const sanitized: Partial<IDeviceInfo> = {};
+
+  if (typeof source.platform === "string" && source.platform.trim()) {
+    sanitized.platform = source.platform.trim();
+  }
+  if (typeof source.model === "string" && source.model.trim()) {
+    sanitized.model = source.model.trim();
+  }
+  if (typeof source.osVersion === "string" && source.osVersion.trim()) {
+    sanitized.osVersion = source.osVersion.trim();
+  }
+  if (typeof source.appVersion === "string" && source.appVersion.trim()) {
+    sanitized.appVersion = source.appVersion.trim();
   }
 
-  if (cleaned.length < 3) {
-    return null;
+  const accuracy = toFiniteNumber(source.accuracyMeters ?? source.accuracy ?? source.horizontalAccuracy);
+  if (accuracy !== null) {
+    sanitized.accuracyMeters = accuracy;
   }
 
-  const first = cleaned[0];
-  const last = cleaned[cleaned.length - 1];
-  if (!isSamePoint(first, last)) {
-    cleaned.push([first[0], first[1]]);
+  if (typeof source.source === "string" && source.source.trim()) {
+    sanitized.source = source.source.trim();
   }
 
-  if (cleaned.length < 4) {
-    return null;
-  }
-
-  return cleaned;
+  return Object.keys(sanitized).length > 0 ? (sanitized as IDeviceInfo) : undefined;
 };
 
-const normalizePolygonCoordinates = (raw: unknown): NormalizedCoordinates | null => {
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return null;
+const isNewGeometryEnabled = (): boolean => {
+  const flag = process.env.FEATURE_USE_NEW_GEOMETRY;
+  if (!flag) {
+    return true;
   }
 
-  const rings = raw
-    .map((ring) => sanitizeRing(ring))
-    .filter((ring): ring is PolygonRing => Boolean(ring));
+  const lowered = flag.trim().toLowerCase();
+  return lowered !== "false" && lowered !== "0" && lowered !== "off";
+};
 
-  if (rings.length === 0) {
-    return null;
+type ClaimBody = {
+  polygonRings?: unknown;
+  coordinates?: unknown;
+  polyline?: unknown;
+  name?: string;
+  area?: unknown;
+  perimeter?: unknown;
+  length?: unknown;
+  encodedPolyline?: unknown;
+  claimedOn?: unknown;
+  deviceInfo?: unknown;
+};
+
+const buildTerritoryCreatePayload = (
+  req: AuthenticatedRequest,
+  body: ClaimBody,
+  sanitizedRings: PolygonRings | null,
+  rawPoints: unknown,
+  areaValue: number | null,
+  perimeterValue: number | null
+) => ({
+  owner: req.user?._id ?? null,
+  name: typeof body.name === "string" && body.name.trim() ? body.name.trim() : "Unnamed Territory",
+  geometry: sanitizedRings ? { type: "Polygon" as const, coordinates: sanitizedRings } : undefined,
+  processedPoints: sanitizedRings ?? [],
+  rawPoints,
+  area: areaValue,
+  perimeter: perimeterValue,
+  encodedPolyline:
+    typeof body.encodedPolyline === "string" && body.encodedPolyline.trim() ? body.encodedPolyline.trim() : undefined,
+  claimedOn: toDate(body.claimedOn) ?? new Date(),
+  deviceInfo: sanitizeDeviceInfo(body.deviceInfo),
+});
+
+const claimTerritoryModern = async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
+  const body = req.body as ClaimBody;
+
+  const rawPolygon = Array.isArray(body.polygonRings) ? body.polygonRings : body.coordinates;
+  const hasPolygonInput = Array.isArray(rawPolygon) && rawPolygon.length > 0;
+  const sanitizedRings = sanitizePolygonRings(rawPolygon);
+  const processedRings: PolygonRings | null = sanitizedRings ? (sanitizedRings as PolygonRings) : null;
+
+  if (hasPolygonInput && !processedRings) {
+    return res.status(400).json({ error: "Invalid polygon" });
   }
 
-  return rings;
+  const rawPolyline = body.polyline;
+  const sanitizedPolyline = sanitizeLineString(rawPolyline);
+
+  const metrics = processedRings ? computeAreaPerimeterFromRings(processedRings) : undefined;
+
+  const areaValue = metrics && Number.isFinite(metrics.area) ? metrics.area : toFiniteNumber(body.area);
+
+  let perimeterValue = metrics && Number.isFinite(metrics.perimeter) ? metrics.perimeter : null;
+
+  if (perimeterValue === null && sanitizedPolyline) {
+    const lengthFromLine = computeLineLengthMeters(sanitizedPolyline);
+    if (Number.isFinite(lengthFromLine) && lengthFromLine > 0) {
+      perimeterValue = lengthFromLine;
+    }
+  }
+
+  if (perimeterValue === null) {
+    perimeterValue = toFiniteNumber(body.perimeter ?? body.length);
+  }
+
+  const rawPointsValue = Array.isArray(rawPolyline)
+    ? rawPolyline
+    : Array.isArray(body.polygonRings)
+      ? body.polygonRings
+      : Array.isArray(rawPolygon)
+        ? rawPolygon
+        : [];
+
+  try {
+    const territory = await Territory.create(
+      buildTerritoryCreatePayload(
+        req,
+        body,
+        processedRings,
+        rawPointsValue,
+        areaValue ?? null,
+        perimeterValue ?? null
+      )
+    );
+    return res.json({ success: true, data: territory });
+  } catch (dbError) {
+    const error = dbError instanceof Error ? dbError : new Error(String(dbError));
+    console.error("Territory creation failed", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to save territory" });
+  }
+};
+
+const claimTerritoryLegacy = async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
+  const body = req.body as ClaimBody;
+
+  const rawCoordinates = body.coordinates;
+  const hasCoordinates = Array.isArray(rawCoordinates) && rawCoordinates.length > 0;
+
+  let processedRings: PolygonRings | null = null;
+  let rawPointsForStorage: unknown = [];
+  let metrics:
+    | {
+        area: number;
+        perimeter: number;
+      }
+    | undefined;
+
+  if (hasCoordinates) {
+    const sanitizedRings = sanitizePolygonRings(rawCoordinates);
+
+    if (!sanitizedRings) {
+      return res.status(400).json({ success: false, message: "Invalid polygon coordinates provided" });
+    }
+
+    processedRings = sanitizedRings as PolygonRings;
+    metrics = computeAreaPerimeterFromRings(processedRings);
+    rawPointsForStorage = rawCoordinates;
+  }
+
+  const areaValue = metrics?.area ?? toFiniteNumber(body.area);
+  let perimeterValue = metrics?.perimeter ?? null;
+
+  if (perimeterValue === null) {
+    perimeterValue = toFiniteNumber(body.perimeter ?? body.length);
+  }
+
+  if (!processedRings && perimeterValue === null) {
+    return res.status(400).json({ success: false, message: "Polygon coordinates or perimeter length is required" });
+  }
+
+  try {
+    const territory = await Territory.create(
+      buildTerritoryCreatePayload(
+        req,
+        body,
+        processedRings,
+        rawPointsForStorage,
+        areaValue ?? null,
+        perimeterValue ?? null
+      )
+    );
+    return res.json({ success: true, data: territory });
+  } catch (dbError) {
+    const error = dbError instanceof Error ? dbError : new Error(String(dbError));
+    console.error("Territory creation failed", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to save territory" });
+  }
 };
 
 export const claimTerritory = async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
-  try {
-    const { coordinates, name, area, length } = req.body as {
-      coordinates?: unknown;
-      name?: string;
-      area?: number;
-      length?: number;
-    };
-
-    if (!Array.isArray(coordinates) || coordinates.length === 0) {
-      return res.status(400).json({ success: false, message: "Polygon coordinates are required" });
-    }
-
-    const normalizedCoordinates = normalizePolygonCoordinates(coordinates);
-
-    if (!normalizedCoordinates) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid polygon coordinates provided",
-      });
-    }
-
-    const metrics = {
-      area: typeof area === "number" ? area : null,
-      length: typeof length === "number" ? length : null,
-    };
-
-    try {
-      const territory = await Territory.create({
-        owner: req.user?._id ?? null,
-        location: { type: "Polygon", coordinates: normalizedCoordinates },
-        name: name?.trim() || "Unnamed Territory",
-        claimedOn: new Date(),
-        metrics,
-      });
-      return res.json({ success: true, data: territory });
-    } catch (dbError) {
-      const error = dbError instanceof Error ? dbError : new Error(String(dbError));
-      console.error("Territory creation failed", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to save territory",
-      });
-    }
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error(String(err));
-    console.error("claimTerritory error", error);
-    return res.status(500).json({ success: false, message: error.message });
+  if (isNewGeometryEnabled()) {
+    return claimTerritoryModern(req, res);
   }
+  return claimTerritoryLegacy(req, res);
 };
 
 export const getTerritories = async (req: AuthenticatedRequest, res: Response): Promise<Response> => {

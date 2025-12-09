@@ -20,9 +20,6 @@ export const uploadAvatar = async (req: AuthenticatedRequest, res: Response): Pr
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
-    console.log("📸 Uploading avatar for:", userId);
-    console.log("📁 File received:", file.path);
-
     const result = await uploadImage(file.path);
     fs.unlinkSync(file.path);
 
@@ -39,8 +36,6 @@ export const uploadAvatar = async (req: AuthenticatedRequest, res: Response): Pr
     user.avatarPublicId = result.publicId;
     user.avatarProvider = "cloudinary";
     await user.save();
-
-    console.log("✅ Avatar upload success:", user.avatarUrl);
 
     return res.json({ success: true, data: { avatarUrl: user.avatarUrl } });
   } catch (err) {

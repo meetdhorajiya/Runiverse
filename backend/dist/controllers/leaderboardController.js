@@ -83,7 +83,7 @@ export const getCityLeaderboard = async (req, res) => {
             {
                 $group: {
                     _id: "$owner",
-                    totalArea: { $sum: { $ifNull: ["$metrics.area", 0] } },
+                    totalArea: { $sum: { $ifNull: ["$area", 0] } },
                     territoryCount: { $sum: 1 },
                 },
             },

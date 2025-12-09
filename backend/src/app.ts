@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import morgan from "morgan";
@@ -18,11 +18,6 @@ app.use(cookieParser());
 app.use(morgan("dev"));
 app.use(cors({ origin: ["https://runiverse.onrender.com/"], credentials: true }));
 
-app.use((req: Request, res: Response, next: NextFunction) => {
-  console.log("➡️ Incoming:", req.method, req.originalUrl);
-  next();
-});
-
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/challenges", challengeRoutes);
@@ -30,8 +25,6 @@ app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/territories", territoryRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/avatar", avatarRoutes);
-
-console.log("📦 Task routes mounted at /api/tasks");
 
 app.get("/", (_req: Request, res: Response) => res.json({ message: "Runiverse Backend running 🚀" }));
 

@@ -729,7 +729,7 @@ export default function Index() {
       <ScreenWrapper bg={isDark ? "bg-[#0f1014]" : "bg-gray-50"}>
          <SafeAreaView className="flex-1">
          <Animated.ScrollView
-            contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: 20 }}
+            contentContainerStyle={{ paddingTop: 16,  paddingBottom: 100, paddingHorizontal: 20 }}
             showsVerticalScrollIndicator={false}
          >
             <Animated.View entering={FadeInDown.duration(800).springify()} className="mt-4 mb-6">

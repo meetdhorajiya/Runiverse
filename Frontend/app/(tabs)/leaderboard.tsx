@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, ActivityIndicator, Image, StyleSheet } from "react-native";
+import { View, Text, ActivityIndicator, Image, StyleSheet, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { FontAwesome5 } from "@expo/vector-icons";
@@ -9,6 +9,8 @@ import Animated, {
   Easing,
   FadeInDown,
   FadeInUp,
+  FadeOutDown,
+  Layout,
   cancelAnimation,
   interpolate,
   useAnimatedStyle,
@@ -19,6 +21,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import AlertCard from "@/components/AlertCard";
+import { ScreenWrapper } from "@/components/layout/ScreenWrapper";
 
 type LeaderboardRowProps = {
   item: LeaderboardEntry;
@@ -91,8 +94,18 @@ const LeaderboardRow = ({ item, index, isDarkMode, textClass, cardBgClass }: Lea
   return (
     <Animated.View
       entering={FadeInDown.duration(400).delay(index * 50)}
-      className={`rounded-3xl mb-3 border border-gray-200/50 dark:border-gray-700/50 overflow-hidden`}
-      style={[cardStyle]}
+      layout={Layout.springify()}
+      className={`rounded-3xl mb-4 overflow-hidden`}
+      style={[
+        cardStyle,
+        {
+          shadowColor: isDarkMode ? '#000' : '#1E293B',
+          shadowOffset: { width: 0, height: rank <= 3 ? 8 : 4 },
+          shadowOpacity: isDarkMode ? 0.3 : 0.1,
+          shadowRadius: rank <= 3 ? 12 : 8,
+          elevation: rank <= 3 ? 10 : 6,
+        },
+      ]}
     >
       {rank <= 3 && (
         <Animated.View style={[styles.highlightWrap, highlightStyle]}>
@@ -205,21 +218,80 @@ const LeaderboardScreen = () => {
   );
 
   return (
-    <SafeAreaView className={`flex-1 ${bgClass}`}>
-      <View className="p-6">
-        <Animated.View entering={FadeInUp.duration(600).delay(100)}>
-          <Text className={`text-4xl font-bold mb-3 ${textClass} tracking-tight`}>Leaderboard</Text>
-          <View className="flex-row items-center bg-primary/10 dark:bg-primary/20 px-4 py-2 rounded-full self-start">
-            <FontAwesome5 name="map-marker-alt" size={16} color="#00C853" />
-            <Text className={`ml-2 text-base font-semibold ${isDarkMode ? "text-text-primary" : "text-gray-700"}`}>{city}</Text>
-          </View>
-          {error && (
-            <Animated.View entering={FadeInDown.duration(300)} className="mt-4">
-              <AlertCard type="error" title="Unable to load leaderboard" message={error} />
-            </Animated.View>
-          )}
-        </Animated.View>
-      </View>
+    <ScreenWrapper bg={bgClass}>
+      <SafeAreaView className="flex-1">
+        <View className="px-6 pt-4 pb-4">
+          <Animated.View entering={FadeInUp.duration(600).delay(100)} layout={Layout.springify()}>
+            <Text className={`text-4xl font-bold mb-3 ${textClass} tracking-tight`}>Leaderboard</Text>
+            <ScrollView 
+  horizontal 
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={{ paddingHorizontal: 16 }}
+  style={{ marginVertical: 10 }}
+>
+  <View className="flex-row">
+    <View
+      className="flex-row items-center px-5 py-3 rounded-2xl mr-3"
+      style={{
+        backgroundColor: isDarkMode ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)',
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(16,185,129,0.3)',
+      }}
+    >
+      <FontAwesome5 name="map-marker-alt" size={16} color="#10B981" />
+      <Text className={`ml-2 text-base font-semibold ${isDarkMode ? "text-text-primary" : "text-gray-700"}`}>
+        {city}
+      </Text>
+    </View>
+    <View
+      className="flex-row items-center px-5 py-3 rounded-2xl mr-3"
+      style={{
+        backgroundColor: isDarkMode ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)',
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(16,185,129,0.3)',
+      }}
+    >
+      {/* <FontAwesome5 name="map-marker-alt" size={16} color="#10B981" /> */}
+      <Text className={`ml-2 text-base font-semibold ${isDarkMode ? "text-text-primary" : "text-gray-700"}`}>
+        Friends
+      </Text>
+    </View>
+    <View
+      className="flex-row items-center px-5 py-3 rounded-2xl"
+      style={{
+        backgroundColor: isDarkMode ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)',
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(16,185,129,0.3)',
+      }}
+    >
+      {/* <FontAwesome5 name="map-marker-alt" size={16} color="#10B981" /> */}
+      <Text className={`ml-2 text-base font-semibold ${isDarkMode ? "text-text-primary" : "text-gray-700"}`}>
+        Community
+      </Text>
+    </View>
+
+  </View>
+</ScrollView>
+
+            {error && (
+              <Animated.View entering={FadeInDown.duration(300)} exiting={FadeOutDown.duration(200)} className="mt-2">
+                <AlertCard type="error" title="Unable to load leaderboard" message={error} />
+              </Animated.View>
+            )}
+          </Animated.View>
+        </View>
       {loading && entries.length === 0 ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color={isDarkMode ? "#60A5FA" : "#2563EB"} />
@@ -244,7 +316,8 @@ const LeaderboardScreen = () => {
           }
         />
       )}
-    </SafeAreaView>
+      </SafeAreaView>
+    </ScreenWrapper>
   );
 };
 
